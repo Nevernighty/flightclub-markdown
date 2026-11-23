@@ -1,0 +1,128 @@
+.fc-md-video {
+  width: min(100%, 54rem);
+  min-width: 0;
+  margin: 1.5rem auto;
+  overflow: hidden;
+  color: var(--foreground, var(--text-normal, #eef1f5));
+  background: var(--card, var(--background-primary, #181c23));
+  border: 1px solid var(--edge, var(--background-modifier-border, #414651));
+  border-radius: 1rem;
+}
+
+.fc-md-video--vertical {
+  width: min(100%, 22rem);
+}
+
+.fc-md-video-screen {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  min-height: 12.5rem;
+  background: radial-gradient(ellipse at 50% 45%, #34202a, #151821 65%, #11141b);
+}
+
+.fc-md-video--vertical .fc-md-video-screen {
+  aspect-ratio: 9 / 16;
+}
+
+.fc-md-video-screen > iframe,
+.fc-md-video-screen > .fc-md-video-native,
+.fc-md-video-play {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.fc-md-video-screen iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.fc-md-video-native :is(p, .external-embed, .media-embed) {
+  display: block;
+  height: 100%;
+  margin: 0;
+}
+
+.fc-md-video .fc-md-video-play {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: .5rem;
+  padding: 1rem;
+  color: #f4f0f1;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.fc-md-video .fc-md-video-play:focus-visible {
+  outline: 2px solid #ffb4ae;
+  outline-offset: -4px;
+}
+
+.fc-md-video-icon {
+  display: grid;
+  width: 3rem;
+  height: 3rem;
+  flex: none;
+  margin-bottom: .35rem;
+  place-items: center;
+  background: #ab302e;
+  border: 1px solid #ff9a93;
+  border-radius: 50%;
+}
+
+.fc-md-video-icon::after {
+  content: "";
+  margin-inline-start: .15rem;
+  border-block: .44rem solid transparent;
+  border-inline-start: .7rem solid #fff;
+}
+
+.fc-md-video-play:hover .fc-md-video-icon,
+.fc-md-video-play:focus-visible .fc-md-video-icon {
+  background: #c23936;
+}
+
+.fc-md-video-label {
+  font-size: .875rem;
+  font-weight: 650;
+}
+
+.fc-md-video-title {
+  max-width: 32rem;
+  overflow: hidden;
+  color: #d8cbd1;
+  font-size: .8125rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.fc-md-video-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: .35rem .85rem;
+}
+
+.fc-md-video .fc-md-video-footer a {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  min-height: 2rem;
+  color: inherit;
+  font-size: .8125rem;
+  text-decoration: underline;
+  text-underline-offset: .2em;
+}
+
+.fc-md-video-error {
+  padding: .75rem 1rem;
+  border-inline-start: .2rem solid var(--primary, var(--text-accent, #ac3333));
+}
