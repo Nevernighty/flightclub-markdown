@@ -29,6 +29,10 @@ const teamPluginsMarker = "/*__FC_TEAM_PLUGINS__*/";
 if (source.split(teamPluginsMarker).length !== 2) throw new Error("Expected one team plugins placeholder");
 const bundledTeamPlugins = "const FC_TEAM_PLUGINS = (() => {\nconst module = { exports: {} };\n" + input("team-plugins.cjs") + "\nreturn module.exports;\n})();";
 
+const eventPublishMarker = "/*__FC_EVENT_PUBLISH__*/";
+if (source.split(eventPublishMarker).length !== 2) throw new Error("Expected one event publish placeholder");
+const bundledEventPublish = "const FC_EVENT_PUBLISH = (() => {\nconst module = { exports: {} };\n" + input("event-publish.cjs") + "\nreturn module.exports;\n})();";
+
 const directInstallerMarker = "/*__FC_DIRECT_PLUGIN_INSTALLER__*/";
 if (source.split(directInstallerMarker).length !== 2) throw new Error("Expected one direct installer placeholder");
 const directInstaller = "const FC_COMMUNITY_BUILD = true;\nconst fcCanDirectInstallCommunityPlugin = () => false;\nconst fcDirectInstallCommunityPlugin = null;";
@@ -62,6 +66,7 @@ fs.writeFileSync(
     .replace(marker, () => "data:image/png;base64," + logo)
     .replace(sync, () => bundled)
     .replace(teamPluginsMarker, () => bundledTeamPlugins)
+    .replace(eventPublishMarker, () => bundledEventPublish)
     .replace(directInstallerMarker, () => directInstaller)
     .replace(updateMarker, () => updater)
     .replace(mediaMarker, () => bundledMedia)

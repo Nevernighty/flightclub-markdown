@@ -9,6 +9,7 @@ Obsidian community plugin for FlightClub teams and cadets (Desktop, Android, and
 - **Direct web links & mentions:** Clickable `[[user:...]]`, `[[item:...]]`, `[[event:...]]`, `[[m:...]]`, and `[[drive:...]]` references plus direct Google Docs and web editor links.
 - **Knowledge base insights & graph presets:** Interactive zone/funnel/timeline graph overview and native Obsidian graph color groups.
 - **Team Plugins sync (Community Plugins):** ADMAX can curate a recommended list of installed team plugins (with optional sanitized `data.json` presets); teammates can review missing plugins and install them directly from Obsidian's official Community Plugins directory (`obsidian://show-plugin?id=...`).
+- **Event publishing pipeline:** Authorized organizers can publish Obsidian event notes (using `опублікувати подію` and `event-copywrite`) to Google Calendar, Discord Scheduled Events, WhatsApp announcements, and the FlightClub schedule via authenticated `flightclub.com.ua` APIs.
 - **YouTube embed blocks:** Renders clean `youtube` fenced blocks using Obsidian's native media renderer on click.
 
 ## Installation (Desktop & Mobile)
