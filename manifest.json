@@ -1,7 +1,7 @@
 {
   "id": "flightclub-markdown",
   "name": "FlightClub Markdown",
-  "version": "1.10.0",
+  "version": "1.11.0",
   "minAppVersion": "1.5.0",
   "description": "Two-way Google Drive sync (Drive primary), live Markdown and Canvas collaboration, team plugin lists, direct web editor links, YouTube embeds, and site references.",
   "author": "FlightClub",
