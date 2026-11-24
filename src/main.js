@@ -9,7 +9,7 @@ const { MarkdownView, Menu, Modal, Notice, Platform, Plugin, TFile, TFolder, req
 /*__FC_PLUGIN_UPDATE__*/
 /*__FC_MARKDOWN_MEDIA__*/
 /*__FC_MARKDOWN_DIFF__*/
-const PLUGIN_VERSION = "1.11.0";
+const PLUGIN_VERSION = "1.11.1";
 const SHARED_FOLDER = "FlightClub Shared/";
 const SYNC_ARCHIVE_PREFIX = "FlightClub Sync Archive";
 const DEFAULT_HUB_CITIES = ["Київ", "Житомир", "Луцьк", "Львів"];
@@ -2687,8 +2687,22 @@ class FlightClubDockView extends BaseItemView {
   getViewType() { return DOCK_VIEW_TYPE; }
   getDisplayText() { return "FlightClub"; }
   getIcon() { return BRAND_ICON; }
-  async onOpen() { this.render(); }
-  async onClose() { this.hubHost?.cleanup?.(); this.hubHost = {}; this.contentEl?.empty?.(); }
+  async onOpen() {
+    const hosts = [
+      this.containerEl?.closest?.(".workspace-tabs"),
+      this.containerEl?.closest?.(".workspace-split.mod-right-split"),
+    ].filter(Boolean);
+    this._dockHostEls = hosts;
+    for (const hostEl of hosts) hostEl.classList?.add?.("fc-has-live-dock");
+    this.render();
+  }
+  async onClose() {
+    for (const hostEl of this._dockHostEls || []) hostEl?.classList?.remove?.("fc-has-live-dock");
+    this._dockHostEls = [];
+    this.hubHost?.cleanup?.();
+    this.hubHost = {};
+    this.contentEl?.empty?.();
+  }
   render() {
     const root = this.contentEl;
     if (!root) return;
@@ -2933,16 +2947,29 @@ module.exports = class FlightClubMarkdown extends Plugin {
         this.accountVerified = false;
         this.accountIsAdmax = false;
         this.accountCanSyncPrivate = false;
+        this.accountRestricted = result.reason === "restricted";
+        if (this.accountRestricted) {
+          this.remoteCatalog = [];
+          this.drivePreview = null;
+          this.vaultConfig.pairedCanSync = false;
+          this.vaultConfig.pairedReadDrive = false;
+          this.vaultConfig.pairedReadPlatform = false;
+          this.pairMessage = result.error || "Обліковий запис у карантині або ще не підтверджений.";
+        }
         this.vaultConfig.pairedCanEdit = false;
         this.stopLiveSession();
         this.refreshDockViews();
         return;
       }
+      this.accountRestricted = false;
       this.vaultConfig.pairedUser = result.viewer.displayName || "Учасник";
       this.vaultConfig.pairedUserId = result.viewer.userId;
       this.vaultConfig.pairedRole = result.viewer.roleLabel;
+      if ("accessTier" in result.viewer) this.vaultConfig.pairedAccessTier = result.viewer.accessTier || null;
       this.vaultConfig.pairedCanEdit = result.viewer.canEdit === true;
       this.vaultConfig.pairedCanSync = result.viewer.canSync ?? (result.viewer.isAdmax === true || result.viewer.canEdit === true);
+      if ("canReadDrive" in result.viewer) this.vaultConfig.pairedReadDrive = result.viewer.canReadDrive === true;
+      if ("canReadPlatform" in result.viewer) this.vaultConfig.pairedReadPlatform = result.viewer.canReadPlatform === true;
       this.accountVerified = true;
       this.accountIsAdmax = result.viewer.isAdmax === true;
       this.accountCanSyncPrivate = result.viewer.canSyncPrivate === true;
@@ -6741,6 +6768,13 @@ module.exports = class FlightClubMarkdown extends Plugin {
         new Notice("Сайт підтвердив доступ. Не вдалося зберегти його в Obsidian. Натисніть «Перевірити зараз».");
         return;
       } finally { pending.checking = false; }
+    } else if (verified.reason === "restricted") {
+      this.pendingPair = null;
+      this.accountRestricted = true;
+      this.pairMessage = verified.error || "Обліковий запис у карантині або ще не підтверджений.";
+      this.refreshDockViews();
+      new Notice(this.pairMessage);
+      return;
     } else {
       const nextState = verified.reason || "waiting";
       if (pending.state !== nextState) {
@@ -6758,9 +6792,24 @@ module.exports = class FlightClubMarkdown extends Plugin {
       const response = await this.siteRequest({ url: SITE + "/m/obsidian-sync?obsidian=device-v1",
         method: "GET", headers: this.authHeaders(token), throw: false });
       const viewer = response.status === 200 ? response.json?.viewer : null;
-      return response.status === 200 && response.json?.ok === true && UUID.test(viewer?.userId || "")
-        ? { ok: true, viewer }
-        : { ok: false, reason: response.status === 401 ? "waiting" : response.status === 426 ? "update" : response.status === 403 ? "denied" : "offline" };
+      if (response.status === 200 && response.json?.ok === true && UUID.test(viewer?.userId || "")) {
+        return { ok: true, viewer };
+      }
+      const isRestricted = response.status === 403 && response.json?.code === "ACCOUNT_RESTRICTED";
+      return {
+        ok: false,
+        reason: isRestricted
+          ? "restricted"
+          : response.status === 401
+            ? "waiting"
+            : response.status === 426
+              ? "update"
+              : response.status === 403
+                ? "denied"
+                : "offline",
+        code: response.json?.code || null,
+        error: response.json?.error || null,
+      };
     } catch { return { ok: false, reason: "offline" }; }
   }
 
@@ -6786,6 +6835,8 @@ module.exports = class FlightClubMarkdown extends Plugin {
       this.vaultConfig.pairedUser = viewer.displayName || "Учасник";
       this.vaultConfig.pairedRole = viewer.roleLabel || "Учасник";
       this.vaultConfig.pairedHub = viewer.hubCity || null;
+      if ("accessTier" in viewer) this.vaultConfig.pairedAccessTier = viewer.accessTier || null;
+      else delete this.vaultConfig.pairedAccessTier;
       this.vaultConfig.pairedCanEdit = viewer.canEdit === true;
       this.vaultConfig.pairedCanSync = viewer.canSync ?? (viewer.canEdit === true || viewer.isAdmax === true);
       if ("canSyncWrite" in viewer) this.vaultConfig.pairedCanSyncWrite = viewer.canSyncWrite === true;
@@ -6795,6 +6846,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
       if ("canReadPlatform" in viewer) this.vaultConfig.pairedReadPlatform = viewer.canReadPlatform === true;
       else delete this.vaultConfig.pairedReadPlatform;
       this.accountVerified = true;
+      this.accountRestricted = false;
       this.accountIsAdmax = viewer.isAdmax === true;
       this.accountCanSyncPrivate = viewer.canSyncPrivate === true;
       this.drivePreview = null;
@@ -6835,15 +6887,26 @@ module.exports = class FlightClubMarkdown extends Plugin {
       const account = await this.verifyDeviceTokenOnServer(token);
       if (!this.alive || token !== this.vaultConfig.deviceToken) return;
       this.accountVerified = account.ok === true;
+      this.accountRestricted = account.reason === "restricted";
       this.accountIsAdmax = account.ok === true && account.viewer.isAdmax === true;
       this.accountCanSyncPrivate = account.ok === true && account.viewer.canSyncPrivate === true;
       if (!account.ok) {
         this.vaultConfig.pairedCanEdit = false;
         this.stopLiveSession();
         this.drivePreview = null;
+        if (account.reason === "restricted") {
+          this.remoteCatalog = [];
+          this.vaultConfig.pairedCanSync = false;
+          this.vaultConfig.pairedReadDrive = false;
+          this.vaultConfig.pairedReadPlatform = false;
+          this.driveDownloadStatus = "Обмежений доступ (карантин або непідтверджений акаунт).";
+          this.refreshDockViews();
+          return;
+        }
         throw new Error('Не вдалося підтвердити акаунт. Перевірте підключення або увійдіть повторно.');
       }
       this.vaultConfig.pairedRole = account.viewer.roleLabel;
+      if ("accessTier" in account.viewer) this.vaultConfig.pairedAccessTier = account.viewer.accessTier || null;
       if (account.viewer.userId) this.vaultConfig.pairedUserId = account.viewer.userId;
       this.vaultConfig.pairedCanEdit = account.viewer.canEdit === true;
       this.vaultConfig.pairedCanSync = account.viewer.canSync ?? (account.viewer.canEdit === true || account.viewer.isAdmax === true);
@@ -15495,11 +15558,21 @@ module.exports = class FlightClubMarkdown extends Plugin {
         return false;
       }
       const payload = response.json;
+      if (payload.restricted === true) {
+        this.accountRestricted = true;
+        this.remoteCatalog = [];
+        if (payload.viewer?.roleLabel) this.vaultConfig.pairedRole = payload.viewer.roleLabel;
+        if ("accessTier" in (payload.viewer || {})) this.vaultConfig.pairedAccessTier = payload.viewer.accessTier || null;
+        this.refreshDockViews();
+        return true;
+      }
+      this.accountRestricted = false;
       if (payload.viewer) {
         if (payload.viewer.userId) this.vaultConfig.pairedUserId = payload.viewer.userId;
         if (payload.viewer.displayName) this.vaultConfig.pairedUser = payload.viewer.displayName;
         if (payload.viewer.roleLabel) this.vaultConfig.pairedRole = payload.viewer.roleLabel;
         if (payload.viewer.hubCity) this.vaultConfig.pairedHub = payload.viewer.hubCity;
+        if ("accessTier" in payload.viewer) this.vaultConfig.pairedAccessTier = payload.viewer.accessTier || null;
       }
       if (typeof payload.localVaultRoot === "string" && !this.vaultConfig.userPinnedLocalRoot) {
         this.vaultConfig.localVaultRoot = payload.localVaultRoot;

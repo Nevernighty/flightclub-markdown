@@ -327,18 +327,24 @@ const TRACKED_PLATFORM_PROPERTIES = {
 };
 
 function splitUnescapedPipes(text) {
-  const cells = [];
+  const parts = [];
   let current = "";
-  for (let i = 0; i < text.length; i += 1) {
-    if (text[i] === "|" && (i === 0 || text[i - 1] !== "\\")) {
-      cells.push(current);
-      current = "";
-    } else {
-      current += text[i];
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === "\\" && i + 1 < text.length) {
+      current += ch + text[i + 1];
+      i++;
+      continue;
     }
+    if (ch === "|") {
+      parts.push(current);
+      current = "";
+      continue;
+    }
+    current += ch;
   }
-  cells.push(current);
-  return cells;
+  parts.push(current);
+  return parts;
 }
 
 function updateTableCells(row) {
