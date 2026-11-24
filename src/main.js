@@ -2860,10 +2860,6 @@ module.exports = class FlightClubMarkdown extends Plugin {
     this.stopLiveSession();
     this.closeUpdateDetails?.();
     this.dialog?.close();
-    try {
-      this.app.workspace?.detachLeavesOfType?.(DOCK_VIEW_TYPE);
-      this.app.workspace?.detachLeavesOfType?.(ZONE_GRAPH_VIEW_TYPE);
-    } catch {}
   }
 
   recordUnreviewedSiteUpdate(path, { count = 1, changes = [], excerpts = [], summary = "Автооновлення із сайту", kind = "platform", updatedAt = new Date().toISOString(), editorName = null, editorUserId = null, editedAt = null } = {}) {

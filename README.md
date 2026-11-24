@@ -18,6 +18,8 @@ Obsidian community plugin for FlightClub teams and cadets (Desktop, Android, and
 2. Disable Restricted Mode if prompted, then search for **FlightClub Markdown** and click **Install** → **Enable**.
 3. Open the **FlightClub** ribbon icon (or command **FlightClub Live Hub**) and click **Підключити акаунт** to pair your Obsidian device in your browser.
 
+Updates arrive automatically via **Settings → Community plugins → Check for updates** once published in the official directory. While the initial directory review is in progress, you can also install and auto-update via **BRAT** using the repository `Nevernighty/flightclub-markdown`.
+
 ## Building from Source
 
 Requires Node.js 18+ (no external npm packages are needed to build the Community Plugins release):
@@ -31,6 +33,7 @@ This compiles `src/` into `main.js` and `styles.css` in the repository root.
 
 ## Network Use, External Services & Privacy Disclosure
 
+- **Account Required:** Full vault sync, live collaboration, mentions, team plugin lists, and event publishing require an authorized FlightClub account paired via `https://flightclub.com.ua`.
 - **FlightClub Backend (`https://flightclub.com.ua`):** All vault sync, role/ACL checks, live collaboration presence, mention lookups, and shared team plugin lists communicate solely with `https://flightclub.com.ua` over HTTPS using Obsidian's `requestUrl` API after you explicitly pair your device.
 - **Official Obsidian Community Directory (`https://raw.githubusercontent.com/obsidianmd/obsidian-releases/master/community-plugins.json`):** Queried read-only by ADMAX/team modals solely to match plugin IDs with their official Community Plugins metadata and open official `obsidian://show-plugin?id=...` listings.
 - **Self-updating / Telemetry:** This plugin performs **no** telemetry or analytics tracking and does **not** self-update or download executable plugin code; updates are delivered exclusively via Obsidian's built-in Community Plugins updater and GitHub Releases.

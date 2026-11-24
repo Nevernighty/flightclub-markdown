@@ -22,12 +22,18 @@ if (manifest.isDesktopOnly !== false) throw new Error("Expected isDesktopOnly: f
 if (versions[manifest.version] !== manifest.minAppVersion) throw new Error("versions.json mismatch");
 
 const mainJs = fs.readFileSync(path.join(root, "main.js"), "utf8");
+const stylesCss = fs.readFileSync(path.join(root, "styles.css"), "utf8");
+if (mainJs.includes("\r\n") || stylesCss.includes("\r\n")) {
+  throw new Error("Build artifacts must use LF line endings for deterministic verification");
+}
 const rules = [
   ["innerHTML / outerHTML / insertAdjacentHTML", /\b(innerHTML|outerHTML|insertAdjacentHTML)\b/g],
   ["Node built-in require()", /\brequire\s*\(\s*["'](?:node:|fs\b|path\b|os\b|crypto\b|child_process\b)/g],
   ["Node Buffer", /\bBuffer\b/g],
   ["Raw fetch()", /\bfetch\s*\(/g],
   ["eval / new Function", /\beval\s*\(|new\s+Function/g],
+  ["Regex lookbehind (iOS / obsidianmd/regex-lookbehind)", /\(\?<[=!]/g],
+  ["detachLeavesOfType in onunload (obsidianmd/detach-leaves)", /\bdetachLeavesOfType\b/g],
   ["window.open", /\bwindow\.open\b/g],
   ["Global window.app", /\bwindow\.app\b/g],
   ["Direct installPlugin", /\binstallPlugin\b/g],

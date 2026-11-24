@@ -326,8 +326,23 @@ const TRACKED_PLATFORM_PROPERTIES = {
   user: [["user-name", "Ім’я"], ["user-roles", "Ролі"], ["user-hub", "Осередок"]],
 };
 
+function splitUnescapedPipes(text) {
+  const cells = [];
+  let current = "";
+  for (let i = 0; i < text.length; i += 1) {
+    if (text[i] === "|" && (i === 0 || text[i - 1] !== "\\")) {
+      cells.push(current);
+      current = "";
+    } else {
+      current += text[i];
+    }
+  }
+  cells.push(current);
+  return cells;
+}
+
 function updateTableCells(row) {
-  return row.slice(1, -1).split(/(?<!\\)\|/).map(value => value.trim()
+  return splitUnescapedPipes(row.slice(1, -1)).map(value => value.trim()
     .replace(/\\\|/g, "|")
     .replace(/\[\[[^\]|]+\|([^\]]+)\]\]/g, "$1")
     .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")

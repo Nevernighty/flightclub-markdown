@@ -4,8 +4,9 @@ const path = require("node:path");
 
 const root = __dirname;
 const srcDir = path.join(root, "src");
-const source = fs.readFileSync(path.join(srcDir, "main.js"), "utf8");
-const input = (name) => fs.readFileSync(path.join(srcDir, name), "utf8");
+const normalizeLf = (text) => String(text).replace(/\r\n/g, "\n");
+const source = normalizeLf(fs.readFileSync(path.join(srcDir, "main.js"), "utf8"));
+const input = (name) => normalizeLf(fs.readFileSync(path.join(srcDir, name), "utf8"));
 
 const marker = "__FLIGHTCLUB_LOGO_DATA__";
 if (source.split(marker).length !== 2) throw new Error("Expected one logo placeholder");
@@ -62,18 +63,21 @@ const bundledDiff = "const FC_MARKDOWN_DIFF = (() => {\n" + sharedDiff + "\nretu
 
 fs.writeFileSync(
   path.join(root, "main.js"),
-  source
-    .replace(marker, () => "data:image/png;base64," + logo)
-    .replace(sync, () => bundled)
-    .replace(teamPluginsMarker, () => bundledTeamPlugins)
-    .replace(eventPublishMarker, () => bundledEventPublish)
-    .replace(directInstallerMarker, () => directInstaller)
-    .replace(updateMarker, () => updater)
-    .replace(mediaMarker, () => bundledMedia)
-    .replace(diffMarker, () => bundledDiff)
-    .replace(graphMarker, () => insights),
+  normalizeLf(
+    source
+      .replace(marker, () => "data:image/png;base64," + logo)
+      .replace(sync, () => bundled)
+      .replace(teamPluginsMarker, () => bundledTeamPlugins)
+      .replace(eventPublishMarker, () => bundledEventPublish)
+      .replace(directInstallerMarker, () => directInstaller)
+      .replace(updateMarker, () => updater)
+      .replace(mediaMarker, () => bundledMedia)
+      .replace(diffMarker, () => bundledDiff)
+      .replace(graphMarker, () => insights),
+  ),
+  "utf8",
 );
 
 const baseCss = input("styles.css");
 const mediaCss = input("markdown-youtube.css");
-fs.writeFileSync(path.join(root, "styles.css"), baseCss + "\n" + mediaCss);
+fs.writeFileSync(path.join(root, "styles.css"), normalizeLf(baseCss + "\n" + mediaCss), "utf8");
