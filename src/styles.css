@@ -2881,10 +2881,15 @@ body .fc-live-banner.fc-live-banner.fc-live-banner-collapsed {
   gap: 0;
   z-index: 25;
 }
-.fc-live-banner.fc-live-banner-collapsed > .fc-live-icon-trigger {
+body .fc-live-banner.fc-live-banner.fc-live-banner-collapsed > .fc-live-dock {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+body .fc-live-banner.fc-live-banner-collapsed > .fc-live-dock > .fc-live-icon-trigger {
   display: inline-flex;
 }
-body .fc-live-banner.fc-live-banner.fc-live-banner-collapsed > :not(.fc-live-icon-trigger) {
+body .fc-live-banner.fc-live-banner.fc-live-banner-collapsed > :not(.fc-live-dock) {
   display: none;
 }
 
@@ -7290,6 +7295,499 @@ body.is-mobile .fc-event-publish-actions button {
 .fc-event-receipt-row.is-err {
   border-color: rgba(239, 68, 68, 0.42);
   background: rgba(239, 68, 68, 0.08);
+}
+
+/* ============================================================================
+   v1.12.0 Top Unified Live Presence Card ("Усі" checkbox), Google Docs++
+   Stacked Avatar Dock, Hover Popover, Canvas Node Flash & FlightClub Join Toast
+   (Community Plugin compliant CSS)
+   ============================================================================ */
+
+.fc-presence-top-card {
+  border-color: rgba(16, 185, 129, 0.34);
+  background: linear-gradient(180deg, rgba(16, 28, 34, 0.9), rgba(14, 18, 25, 0.96));
+}
+
+.fc-presence-heading {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: var(--text-normal);
+  min-width: 0;
+}
+
+.fc-presence-all-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(56, 189, 248, 0.36);
+  background: rgba(56, 189, 248, 0.11);
+  color: #e0f2fe;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  user-select: none;
+  transition: border-color 140ms ease, background-color 140ms ease;
+}
+
+.fc-presence-all-toggle:hover {
+  border-color: rgba(56, 189, 248, 0.72);
+  background: rgba(56, 189, 248, 0.2);
+}
+
+.fc-presence-all-toggle input {
+  margin: 0;
+  width: 13px;
+  height: 13px;
+  accent-color: #10b981;
+  cursor: pointer;
+}
+
+.fc-online-rooms-embed {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.fc-online-subhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+}
+
+body .fc-presence-show-all-btn.fc-presence-show-all-btn {
+  width: 100%;
+  margin-top: 6px;
+  border-color: rgba(56, 189, 248, 0.42);
+  background: rgba(56, 189, 248, 0.1);
+  color: #bae6fd;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+/* Google Docs++ Stacked Avatar Dock inside Live Banner */
+.fc-live-dock {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+}
+
+.fc-live-avatar-stack {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px 2px 4px;
+  border-radius: 999px;
+  border: 1px solid rgba(16, 185, 129, 0.44);
+  background: rgba(12, 19, 27, 0.92);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.42);
+}
+
+.fc-live-avatar-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  margin-left: -6px;
+  border-radius: 999px;
+  border: 2px solid #0b1118;
+  background: transparent;
+  box-shadow: 0 0 0 1.5px var(--fc-peer-color, #38bdf8);
+  cursor: pointer;
+  transition: transform 160ms cubic-bezier(0.22, 1, 0.36, 1), z-index 0s, box-shadow 160ms ease;
+}
+
+.fc-live-avatar-btn:first-child {
+  margin-left: 0;
+}
+
+.fc-live-avatar-btn.is-here {
+  box-shadow: 0 0 0 2px #10b981;
+}
+
+.fc-live-avatar-btn.is-opsec {
+  box-shadow: 0 0 0 2px #f59e0b;
+}
+
+.fc-live-avatar-btn:hover,
+.fc-live-avatar-btn:focus-visible {
+  transform: translateY(-2px) scale(1.1);
+  z-index: 40;
+  outline: none;
+}
+
+.fc-dock-avatar,
+.fc-live-solo-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 800;
+  overflow: hidden;
+  position: relative;
+  color: #f8fafc;
+  background: linear-gradient(135deg, rgba(220, 38, 38, 0.85), rgba(15, 23, 42, 0.95));
+}
+
+.fc-live-solo-avatar {
+  width: 18px;
+  height: 18px;
+  font-size: 9px;
+}
+
+.fc-dock-avatar img,
+.fc-live-solo-avatar img,
+.fc-join-avatar img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 999px;
+}
+
+.fc-live-avatar-pulse {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #10b981;
+  border: 1.5px solid #0b1118;
+  animation: fc-pulse 1.3s ease-in-out infinite;
+}
+
+.fc-live-avatar-overflow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  padding: 0 6px;
+  margin-left: 4px;
+  border-radius: 999px;
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  background: rgba(56, 189, 248, 0.16);
+  color: #bae6fd;
+  font-size: 10px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.fc-live-avatar-popover {
+  position: absolute;
+  top: calc(100% + 9px);
+  right: -6px;
+  min-width: 210px;
+  max-width: 270px;
+  display: grid;
+  gap: 4px;
+  padding: 9px 11px;
+  border-radius: 10px;
+  border: 1px solid rgba(220, 38, 38, 0.45);
+  background: linear-gradient(165deg, rgba(13, 18, 26, 0.98), rgba(22, 16, 22, 0.98));
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.56);
+  color: #f1f5f9;
+  text-align: left;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-4px) scale(0.97);
+  transition: opacity 150ms ease, transform 150ms ease;
+  z-index: 60;
+}
+
+.fc-live-avatar-btn:hover > .fc-live-avatar-popover,
+.fc-live-avatar-btn:focus-visible > .fc-live-avatar-popover {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.fc-pop-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.fc-pop-role {
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 9.5px;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.09);
+  color: #cbd5e1;
+}
+
+.fc-pop-doc {
+  font-size: 11px;
+  font-weight: 700;
+  color: #7dd3fc;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fc-pop-act {
+  font-size: 10.5px;
+  color: #a7f3d0;
+  line-height: 1.3;
+  white-space: normal;
+}
+
+.fc-pop-hint {
+  font-size: 10px;
+  color: #f87171;
+  font-weight: 700;
+  margin-top: 2px;
+}
+
+.fc-live-icon-trigger.has-avatars {
+  padding: 0 8px;
+  gap: 4px;
+}
+
+.fc-live-icon-chev {
+  font-size: 10px;
+  opacity: 0.85;
+}
+
+/* Canvas Node Teleport Target Highlight */
+@keyframes fc-canvas-node-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.85), 0 0 0 0 rgba(220, 38, 38, 0.65);
+  }
+  45% {
+    box-shadow: 0 0 0 8px rgba(16, 185, 129, 0.35), 0 0 28px 6px rgba(220, 38, 38, 0.38);
+  }
+  100% {
+    box-shadow: 0 0 0 14px rgba(16, 185, 129, 0), 0 0 0 0 rgba(220, 38, 38, 0);
+  }
+}
+
+.fc-canvas-node-flash {
+  animation: fc-canvas-node-ring 1.15s cubic-bezier(0.22, 1, 0.36, 1) 2;
+}
+
+/* FlightClub Original Animated Arrival Notification */
+@keyframes fc-join-enter {
+  0% {
+    opacity: 0;
+    transform: translate3d(26px, -8px, 0) scale(0.94);
+  }
+  65% {
+    opacity: 1;
+    transform: translate3d(-3px, 2px, 0) scale(1.01);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes fc-join-radar {
+  0% {
+    transform: scale(0.85);
+    opacity: 0.78;
+  }
+  100% {
+    transform: scale(1.45);
+    opacity: 0;
+  }
+}
+
+@keyframes fc-join-beam-sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(220%);
+  }
+}
+
+.fc-join-toast-stack {
+  position: fixed;
+  top: 46px;
+  right: 18px;
+  display: grid;
+  gap: 10px;
+  z-index: 120;
+  width: min(360px, calc(100vw - 28px));
+  pointer-events: none;
+}
+
+.fc-join-toast {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(220, 38, 38, 0.52);
+  background: linear-gradient(145deg, rgba(16, 12, 18, 0.96), rgba(11, 20, 29, 0.96));
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.56), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
+  color: #f8fafc;
+  pointer-events: auto;
+  animation: fc-join-enter 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  transition: opacity 220ms ease, transform 220ms ease;
+}
+
+.fc-join-toast.is-leaving {
+  opacity: 0;
+  transform: translate3d(18px, -4px, 0) scale(0.96);
+}
+
+.fc-join-toast-beam {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 55%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #ef4444, #10b981, transparent);
+  animation: fc-join-beam-sweep 2.2s ease-in-out infinite;
+}
+
+.fc-join-avatar-ring {
+  position: relative;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fc-join-avatar-ring::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 999px;
+  border: 2px solid var(--fc-peer-color, #10b981);
+  animation: fc-join-radar 1.7s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+
+.fc-join-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 800;
+  border: 1.5px solid rgba(255, 255, 255, 0.25);
+  background: rgba(220, 38, 38, 0.24);
+}
+
+.fc-join-toast-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.fc-join-toast-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+}
+
+.fc-join-toast-who {
+  font-size: 12.5px;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.fc-join-role-pill {
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 9.5px;
+  font-weight: 700;
+  background: rgba(220, 38, 38, 0.22);
+  border: 1px solid rgba(248, 113, 113, 0.38);
+  color: #fecaca;
+}
+
+.fc-join-time {
+  margin-left: auto;
+  font-size: 10px;
+  color: #94a3b8;
+  font-variant-numeric: tabular-nums;
+}
+
+.fc-join-toast-sub {
+  font-size: 11px;
+  color: #cbd5e1;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.fc-join-toast-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+body .fc-join-jump-btn.fc-join-jump-btn {
+  padding: 4px 8px;
+  min-height: 26px;
+  height: auto;
+  border-radius: 7px;
+  border: 1px solid rgba(16, 185, 129, 0.55);
+  background: rgba(16, 185, 129, 0.18);
+  color: #d1fae5;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+body .fc-join-jump-btn.fc-join-jump-btn:hover {
+  background: rgba(16, 185, 129, 0.3);
+}
+
+body .fc-join-close-btn.fc-join-close-btn {
+  width: 22px;
+  height: 22px;
+  min-height: 22px;
+  padding: 0;
+  border-radius: 999px;
+  border: 0;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fc-join-toast,
+  .fc-join-toast-beam,
+  .fc-join-avatar-ring::before,
+  .fc-live-avatar-pulse,
+  .fc-canvas-node-flash {
+    animation: none;
+  }
 }
 
 

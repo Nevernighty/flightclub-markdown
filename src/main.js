@@ -9,7 +9,7 @@ const { MarkdownView, Menu, Modal, Notice, Platform, Plugin, TFile, TFolder, req
 /*__FC_PLUGIN_UPDATE__*/
 /*__FC_MARKDOWN_MEDIA__*/
 /*__FC_MARKDOWN_DIFF__*/
-const PLUGIN_VERSION = "1.11.2";
+const PLUGIN_VERSION = "1.12.0";
 const SHARED_FOLDER = "FlightClub Shared/";
 const SYNC_ARCHIVE_PREFIX = "FlightClub Sync Archive";
 const DEFAULT_HUB_CITIES = ["Київ", "Житомир", "Луцьк", "Львів"];
@@ -2307,6 +2307,49 @@ function secureImageUrl(value) {
   } catch { return null; }
 }
 
+function buildLiveAvatarNode(doc, peer, extraClass = "") {
+  const isMaskedOpsec = Boolean(peer && peer.opsec && !userProfileUrl(peer.userId));
+  const name = isMaskedOpsec ? "OPSEC" : String(peer?.name || "Учасник");
+  const node = doc.createElement("span");
+  node.className = "fc-peer-avatar"
+    + (extraClass ? " " + extraClass : "")
+    + (isMaskedOpsec ? " fc-peer-avatar-opsec" : peer?.opsec ? " is-opsec" : "");
+  if (!isMaskedOpsec && /^#[0-9a-f]{6}$/i.test(peer?.color || "")) {
+    node.style?.setProperty?.("--fc-peer-color", peer.color);
+  }
+  const inner = doc.createElement("span");
+  inner.className = "fc-avatar-core";
+  if (isMaskedOpsec) {
+    inner.textContent = "🛡";
+    node.append(inner);
+    return node;
+  }
+  const letters = name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
+  inner.textContent = letters || "FC";
+  node.append(inner);
+  const url = secureImageUrl(peer?.avatarUrl);
+  if (url) {
+    const photo = doc.createElement("img");
+    photo.src = url;
+    photo.alt = "";
+    photo.decoding = "async";
+    photo.referrerPolicy = "no-referrer";
+    photo.addEventListener("error", () => photo.remove(), { once: true });
+    node.append(photo);
+  }
+  return node;
+}
+
+function formatShortClock(ts) {
+  const d = ts ? new Date(ts) : new Date();
+  if (Number.isNaN(d.getTime())) return "";
+  try {
+    return d.toLocaleTimeString("uk-UA", { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  }
+}
+
 function addAvatar(container, peer) {
   const isMaskedOpsec = Boolean(peer && peer.opsec && !userProfileUrl(peer.userId));
   const name = isMaskedOpsec ? "OPSEC" : String(peer.name || "Учасник");
@@ -3459,6 +3502,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
     clearTimeout(this.treeBadgeExpiryTimer);
     this.treeBadgeExpiryTimer = null;
     if (this.baselineTimer) { clearTimeout(this.baselineTimer); void this.persist().catch(() => {}); }
+    this.clearJoinToasts?.();
     this.stopLiveSession();
     this.closeUpdateDetails?.();
     this.dialog?.close();
@@ -5395,8 +5439,18 @@ module.exports = class FlightClubMarkdown extends Plugin {
       const fmLen = isDrive ? 0 : local.frontmatterBlock.length;
       const position = (part) => editor ? Math.max(0, editor.posToOffset(editor.getCursor(part)) - fmLen) : 0;
       const selection = { anchor: position("anchor"), head: position("head") };
-      const presenceAction = liveWriting ? (selection.anchor !== selection.head ? "selecting" : Date.now() - session.lastTypedAt < 4_000 ? "typing" : "viewing") : "viewing";
-      const basePayload = { clientId: this.clientId, source: this.sourceKind, ...selection };
+      const presenceCtx = this.readActivePresenceContext?.(session.file, this.noteView?.(session.file)) || {};
+      const presenceAction = liveWriting
+        ? (selection.anchor !== selection.head || presenceCtx.canvasNodeId ? "selecting" : Date.now() - session.lastTypedAt < 4_000 ? "typing" : "viewing")
+        : "viewing";
+      const basePayload = {
+        clientId: this.clientId,
+        source: this.sourceKind,
+        ...selection,
+        ...(presenceCtx.canvasNodeId ? { canvasNodeId: presenceCtx.canvasNodeId } : {}),
+        ...(presenceCtx.canvasNodeLabel ? { canvasNodeLabel: presenceCtx.canvasNodeLabel } : {}),
+        ...(presenceCtx.heading ? { heading: presenceCtx.heading } : {}),
+      };
 
       const result = isDrive
         ? await this.driveLivePost(batch ? (batch.isCanvas ? {
@@ -5473,6 +5527,14 @@ module.exports = class FlightClubMarkdown extends Plugin {
         const visible = (list) => JSON.stringify(list.map(({ updatedAt, ...peer }) => peer));
         const peersChanged = visible(this.livePeers) !== visible(next);
         if (peersChanged) { this.livePeers = next; this.refreshCursorDecorations?.(); }
+        const roomKey = isDrive ? `drive:${session.fileId}` : `m:${session.slug}`;
+        this.detectAndNotifyPeerJoins?.(roomKey, next, {
+          file: session.file,
+          isCanvas: Boolean(session.isCanvas),
+          kind: session.kind,
+          fileId: session.fileId || null,
+          slug: session.slug || null,
+        });
 
         const distinctRemotePeople = new Set(next.filter(p => !this.vaultConfig.pairedUserId || p.userId !== this.vaultConfig.pairedUserId).map(p => p.userId || p.clientId)).size;
         const hasTwoPlusInDoc = distinctRemotePeople >= 1 || next.length >= 1;
@@ -5846,6 +5908,206 @@ module.exports = class FlightClubMarkdown extends Plugin {
     modal.open();
   }
 
+  readActivePresenceContext(file, view = null) {
+    if (!file) return {};
+    const v = view || this.noteView?.(file) || null;
+    const isCanvas = file.extension?.toLowerCase?.() === "canvas" || String(file.path || "").toLowerCase().endsWith(".canvas");
+    if (isCanvas) {
+      const sel = v?.canvas?.selection;
+      let firstNode = null;
+      if (sel) {
+        if (typeof sel[Symbol.iterator] === "function") {
+          for (const item of sel) { firstNode = item; break; }
+        } else if (Array.isArray(sel) && sel.length) {
+          firstNode = sel[0];
+        }
+      }
+      if (!firstNode || !firstNode.id) return { canvasNodeId: null, canvasNodeLabel: null, heading: null };
+      const rawText = String(
+        firstNode.text ||
+        firstNode.label ||
+        firstNode.file?.basename ||
+        firstNode.filePath?.split?.("/")?.pop?.() ||
+        firstNode.unknownData?.label ||
+        firstNode.url ||
+        "",
+      )
+        .replace(/[#*_`[\]]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      const canvasNodeLabel = rawText.length > 52 ? rawText.slice(0, 51).trimEnd() + "…" : (rawText || null);
+      return {
+        canvasNodeId: String(firstNode.id).trim().slice(0, 80) || null,
+        canvasNodeLabel,
+        heading: null,
+      };
+    }
+    const ed = v?.editor;
+    if (!ed || typeof ed.getCursor !== "function" || typeof ed.getLine !== "function") return {};
+    try {
+      const cursorLine = Math.max(0, ed.getCursor("head")?.line ?? 0);
+      const minLine = Math.max(0, cursorLine - 400);
+      for (let i = cursorLine; i >= minLine; i--) {
+        const lineText = String(ed.getLine(i) || "");
+        const m = lineText.match(/^#{1,6}\s+(.+)$/);
+        if (m && m[1]) {
+          const clean = m[1].replace(/[*_`[\]]+/g, "").replace(/\s+/g, " ").trim();
+          if (clean) return { heading: clean.length > 56 ? clean.slice(0, 55).trimEnd() + "…" : clean };
+        }
+      }
+    } catch {}
+    return {};
+  }
+
+  clearJoinToasts() {
+    if (Array.isArray(this.joinToastTimers)) {
+      for (const timer of this.joinToastTimers) clearTimeout(timer);
+      this.joinToastTimers.length = 0;
+    }
+    try { this.joinToastStackEl?.remove?.(); } catch {}
+    this.joinToastStackEl = null;
+  }
+
+  detectAndNotifyPeerJoins(roomKey, nextPeers, context = {}) {
+    if (!roomKey) return;
+    this.seenRoomPeerKeys ??= new Map();
+    const myId = this.vaultConfig?.pairedUserId || null;
+    const remoteKeys = new Map();
+    for (const peer of nextPeers || []) {
+      if (!peer) continue;
+      if (peer.clientId && peer.clientId === this.clientId) continue;
+      if (myId && peer.userId && String(peer.userId) === String(myId)) continue;
+      const pKey = peer.userId ? `u:${peer.userId}` : peer.clientId ? `c:${peer.clientId}` : `n:${peer.name || ""}`;
+      if (!remoteKeys.has(pKey)) remoteKeys.set(pKey, peer);
+    }
+    let state = this.seenRoomPeerKeys.get(roomKey);
+    if (!state) {
+      this.seenRoomPeerKeys.set(roomKey, { hydrated: true, keys: new Set(remoteKeys.keys()) });
+      return;
+    }
+    if (!state.hydrated) {
+      for (const k of remoteKeys.keys()) state.keys.add(k);
+      state.hydrated = true;
+      return;
+    }
+    for (const [k, peer] of remoteKeys.entries()) {
+      if (!state.keys.has(k)) {
+        state.keys.add(k);
+        this.showPeerJoinedToast(peer, context);
+      }
+    }
+    // Sync active keys so returning collaborators trigger fresh arrival animations
+    state.keys = new Set(remoteKeys.keys());
+  }
+
+  showPeerJoinedToast(peer, context = {}) {
+    const doc = context.document || this.noteView?.(context.file || this.activeNote?.())?.containerEl?.ownerDocument || (typeof document !== "undefined" ? document : null);
+    if (!doc?.body || typeof doc.createElement !== "function") return;
+    if (!this.joinToastStackEl || !this.joinToastStackEl.isConnected) {
+      this.joinToastStackEl?.remove?.();
+      this.joinToastStackEl = doc.createElement("div");
+      this.joinToastStackEl.className = "fc-join-toast-stack";
+      this.joinToastStackEl.setAttribute("aria-live", "polite");
+      doc.body.append(this.joinToastStackEl);
+    }
+    const stack = this.joinToastStackEl;
+    while (stack.children.length >= 2) {
+      stack.firstElementChild?.remove?.();
+    }
+    const toast = doc.createElement("div");
+    toast.className = "fc-join-toast" + (peer?.opsec ? " is-opsec" : "");
+    toast.setAttribute("data-fc-join-toast", "true");
+    toast.setAttribute("role", "status");
+    if (/^#[0-9a-f]{6}$/i.test(peer?.color || "")) {
+      toast.style.setProperty("--fc-peer-color", peer.color);
+    }
+
+    const beam = doc.createElement("div");
+    beam.className = "fc-join-toast-beam";
+    beam.setAttribute("aria-hidden", "true");
+    toast.append(beam);
+
+    const avatarRing = doc.createElement("div");
+    avatarRing.className = "fc-join-avatar-ring";
+    avatarRing.append(buildLiveAvatarNode(doc, peer, "fc-join-avatar"));
+    toast.append(avatarRing);
+
+    const body = doc.createElement("div");
+    body.className = "fc-join-toast-body";
+    const head = doc.createElement("div");
+    head.className = "fc-join-toast-head";
+    const isMaskedOpsec = Boolean(peer?.opsec && !userProfileUrl(peer?.userId));
+    const who = doc.createElement("strong");
+    who.className = "fc-join-toast-who";
+    who.textContent = isMaskedOpsec ? "OPSEC" : String(peer?.name || "Учасник");
+    head.append(who);
+    if (peer?.roleLabel && !isMaskedOpsec) {
+      const role = doc.createElement("span");
+      role.className = "fc-join-role-pill";
+      role.textContent = peer.roleLabel;
+      head.append(role);
+    }
+    const time = doc.createElement("span");
+    time.className = "fc-join-time";
+    const clock = formatShortClock(peer?.joinedAt || Date.now());
+    time.textContent = clock ? `${clock} · щойно` : "щойно";
+    head.append(time);
+    body.append(head);
+
+    const isCanvas = Boolean(context.isCanvas || /\.canvas$/i.test(String(context.file?.path || "")));
+    const pInfo = this.describePeerActivity(peer, isCanvas);
+    const docLabel = context.file?.basename || context.title || "документ";
+    const srcLabel = peer?.source === "web" ? "🌐 Сайт" : "💎 Obsidian";
+    const loc = doc.createElement("div");
+    loc.className = "fc-join-toast-sub";
+    loc.textContent = `Приєднався у «${docLabel}» · ${pInfo.text} · ${srcLabel}`;
+    body.append(loc);
+    toast.append(body);
+
+    const actions = doc.createElement("div");
+    actions.className = "fc-join-toast-actions";
+    const goBtn = doc.createElement("button");
+    goBtn.type = "button";
+    goBtn.className = "fc-join-jump-btn";
+    goBtn.setAttribute("data-fc-join-jump", "true");
+    goBtn.textContent = "🎯 Перейти";
+    const dismiss = () => {
+      if (toast.classList.contains("is-leaving")) return;
+      toast.classList.add("is-leaving");
+      if (typeof setTimeout === "function") setTimeout(() => toast.remove(), 240);
+      else toast.remove();
+    };
+    goBtn.addEventListener("click", () => {
+      dismiss();
+      if (context.file) {
+        void this.jumpToPeerCursor(peer, context.file);
+      } else if (context.room) {
+        void this.teleportToOnlinePeer(context.room, peer);
+      }
+    });
+    const closeBtn = doc.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.className = "fc-join-close-btn";
+    closeBtn.setAttribute("aria-label", "Закрити сповіщення");
+    closeBtn.textContent = "×";
+    closeBtn.addEventListener("click", dismiss);
+    actions.append(goBtn, closeBtn);
+    toast.append(actions);
+
+    stack.append(toast);
+    this.joinToastTimers ??= [];
+    let timer = null;
+    if (typeof setTimeout === "function") {
+      timer = setTimeout(dismiss, 6500);
+      this.joinToastTimers.push(timer);
+      toast.addEventListener("mouseenter", () => { if (timer !== null && typeof clearTimeout === "function") clearTimeout(timer); });
+      toast.addEventListener("mouseleave", () => {
+        timer = setTimeout(dismiss, 2400);
+        this.joinToastTimers?.push(timer);
+      });
+    }
+  }
+
   describePeerActivity(peer, isCanvas = false) {
     const rawDetail = String(peer?.actionDetail || "").trim();
     const action = String(peer?.action || "").toLowerCase();
@@ -5855,19 +6117,27 @@ module.exports = class FlightClubMarkdown extends Plugin {
       action === "editing_meta" ||
       /друкує|редагує|змінює/i.test(rawDetail)
     );
-    const selecting = action === "selecting" || /виділяє/i.test(rawDetail);
+    const selecting = action === "selecting" || /виділяє|вибрав картку/i.test(rawDetail);
     const saved = action === "saved" || /зберіг/i.test(rawDetail);
     const lineNum = typeof peer?.line === "number" && peer.line >= 1 ? Math.floor(peer.line) : null;
+    const isMaskedOpsec = Boolean(peer?.opsec && !userProfileUrl(peer?.userId));
+    const nodeLabel = !isMaskedOpsec && peer?.canvasNodeLabel ? String(peer.canvasNodeLabel).trim() : "";
+    const heading = !isMaskedOpsec && peer?.heading ? String(peer.heading).trim() : "";
     if (isCanvas) {
+      const cardText = nodeLabel
+        ? (editing ? `редагує картку «${nodeLabel}»` : selecting ? `вибрав картку «${nodeLabel}»` : `картка «${nodeLabel}»`)
+        : null;
       const detail = rawDetail && !/ряд\.\s*1\b/i.test(rawDetail)
         ? rawDetail
-        : editing ? "редагує Canvas" : saved ? "зберіг Canvas" : "переглядає Canvas";
+        : cardText || (editing ? "редагує Canvas" : saved ? "зберіг Canvas" : "переглядає Canvas");
       return {
-        icon: editing ? "✏️" : saved ? "💾" : "🎨",
+        icon: editing ? "✏️" : selecting ? "🎨" : saved ? "💾" : "🎨",
         text: detail,
-        state: editing ? "editing" : saved ? "saved" : "viewing",
-        editing,
+        state: editing ? "editing" : selecting ? "selecting" : saved ? "saved" : "viewing",
+        editing: editing || selecting,
         line: null,
+        canvasNodeLabel: nodeLabel || null,
+        heading: null,
       };
     }
     const fallbackText = editing
@@ -5886,6 +6156,8 @@ module.exports = class FlightClubMarkdown extends Plugin {
       state: editing ? "editing" : selecting ? "selecting" : saved ? "saved" : "viewing",
       editing: editing || selecting,
       line: lineNum,
+      canvasNodeLabel: null,
+      heading: heading || null,
     };
   }
 
@@ -6006,6 +6278,57 @@ module.exports = class FlightClubMarkdown extends Plugin {
     return unique;
   }
 
+  async focusCanvasPeerNode(file, peer, initialView = null) {
+    const nodeId = peer?.canvasNodeId ? String(peer.canvasNodeId).trim() : "";
+    let view = initialView || this.noteView?.(file) || null;
+    if (view?.leaf && this.app?.workspace?.setActiveLeaf) {
+      try { this.app.workspace.setActiveLeaf(view.leaf, { focus: true }); } catch {}
+    }
+    const lookupNode = (canvas) => {
+      if (!canvas?.nodes || !nodeId) return null;
+      if (typeof canvas.nodes.get === "function") return canvas.nodes.get(nodeId) || null;
+      if (typeof canvas.nodes[Symbol.iterator] === "function") {
+        for (const n of canvas.nodes) {
+          if (n?.id === nodeId) return n;
+        }
+      }
+      return canvas.nodes[nodeId] || null;
+    };
+    let node = lookupNode(view?.canvas);
+    for (let attempt = 0; attempt < 6 && nodeId && !node; attempt++) {
+      await new Promise((r) => setTimeout(r, 120));
+      view = this.noteView?.(file) || view;
+      node = lookupNode(view?.canvas);
+    }
+    const canvas = view?.canvas;
+    if (node && canvas) {
+      try {
+        canvas.deselectAll?.();
+        if (typeof canvas.selectOnly === "function") canvas.selectOnly(node);
+        else canvas.select?.(node);
+        if (typeof canvas.zoomToSelection === "function") canvas.zoomToSelection();
+        else if (typeof canvas.zoomToBbox === "function" && typeof node.getBBox === "function") {
+          canvas.zoomToBbox(node.getBBox());
+        }
+        const nodeEl = node.nodeEl || view?.containerEl?.querySelector?.(`[data-node-id="${nodeId}"]`);
+        if (nodeEl?.classList) {
+          nodeEl.classList.remove("fc-canvas-node-flash");
+          void nodeEl.offsetWidth;
+          nodeEl.classList.add("fc-canvas-node-flash");
+          if (typeof setTimeout === "function") {
+            setTimeout(() => nodeEl.classList?.remove?.("fc-canvas-node-flash"), 2400);
+          }
+        }
+      } catch {}
+      const info = this.describePeerActivity(peer, true);
+      new Notice(`🎯 ${peer?.name || "Учасник"} · ${info.text}`, 3200);
+      return true;
+    }
+    const info = this.describePeerActivity(peer, true);
+    new Notice(`🎨 ${peer?.name || "Учасник"} · ${info.text}`);
+    return true;
+  }
+
   async jumpToPeerCursor(peer, targetFile = null) {
     const file = targetFile || this.liveSession?.file || this.activeNote?.();
     if (!file) {
@@ -6015,12 +6338,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
     const isCanvas = file.extension?.toLowerCase?.() === "canvas" || String(file.path || "").toLowerCase().endsWith(".canvas");
     const view = this.noteView?.(file) || null;
     if (isCanvas) {
-      if (view?.leaf && this.app?.workspace?.setActiveLeaf) {
-        try { this.app.workspace.setActiveLeaf(view.leaf, { focus: true }); } catch {}
-      }
-      const info = this.describePeerActivity(peer, true);
-      new Notice(`🎯 ${peer?.name || "Учасник"} · ${info.text}`);
-      return true;
+      return this.focusCanvasPeerNode(file, peer, view);
     }
     if (view && view.getMode?.() === "preview" && typeof view.setState === "function") {
       try {
@@ -6126,6 +6444,41 @@ module.exports = class FlightClubMarkdown extends Plugin {
     const mode = target ? this.liveModeState(file) : null;
     const activeSharedFileId = this.sharedWebNote?.path === sharedPath ? this.sharedWebNote?.fileId : null;
     const peers = target ? this.livePeers : (activeSharedFileId ? (this.sharedPeers || []).filter(p => p.fileId === activeSharedFileId) : []);
+    const showAllDock = this.vaultConfig?.presenceShowAll !== false;
+    const allRooms = showAllDock ? this.dedupeOnlineRooms(this.workspaceActivity, this.sharedPeers, file, sharedPath) : [];
+    const dockEntries = [];
+    const seenDockKeys = new Set();
+    const myUserId = this.vaultConfig?.pairedUserId || null;
+    const pushDockPeer = (entryPeer, entryRoom, isHere) => {
+      if (!entryPeer) return;
+      if (entryPeer.clientId && entryPeer.clientId === this.clientId) return;
+      const key = entryPeer.userId ? `u:${entryPeer.userId}` : entryPeer.clientId ? `c:${entryPeer.clientId}` : `n:${entryPeer.name || ""}`;
+      if (seenDockKeys.has(key)) return;
+      seenDockKeys.add(key);
+      dockEntries.push({ peer: entryPeer, room: entryRoom, isHere });
+    };
+    const hereRoom = {
+      kind: target?.kind === "drive" ? "drive" : link ? "m" : "shared",
+      fileId: driveId || null,
+      slug: link?.slug || this.liveSlug || null,
+      path: file.path,
+      title: file.basename,
+      peers,
+    };
+    for (const p of peers) pushDockPeer(p, hereRoom, true);
+    if (showAllDock) {
+      for (const room of allRooms) {
+        const roomIsHere = Boolean(
+          (room.slug && room.slug === this.liveSlug) ||
+          (room.kind === "drive" && room.fileId && (this.liveSession?.fileId === room.fileId || driveId === room.fileId)) ||
+          (room.kind === "shared" && room.path && sharedPath === room.path),
+        );
+        for (const p of room.peers || []) {
+          if (myUserId && p.userId === myUserId && !roomIsHere) continue;
+          pushDockPeer(p, room, roomIsHere);
+        }
+      }
+    }
     const bannerSig = JSON.stringify([
       file.path,
       target?.key || "",
@@ -6134,8 +6487,10 @@ module.exports = class FlightClubMarkdown extends Plugin {
       Boolean(this.vaultConfig.liveEnabled),
       Boolean(this.liveModeChanging),
       this.vaultConfig.liveBannerCollapsed !== false,
+      showAllDock,
       sharedPath || "",
-      peers.map(p => [p.clientId || p.userId, p.name, p.line, p.editing, p.actionDetail, p.color]),
+      peers.map(p => [p.clientId || p.userId, p.name, p.line, p.editing, p.actionDetail, p.color, p.canvasNodeId, p.canvasNodeLabel, p.avatarUrl]),
+      dockEntries.map(d => [d.peer.clientId || d.peer.userId, d.peer.name, d.peer.line, d.peer.editing, d.peer.actionDetail, d.room?.title, d.peer.canvasNodeId, d.peer.avatarUrl, d.isHere]),
     ]);
     if (this.liveBannerEl && this.liveBannerEl.parentElement === container && this.liveBannerSignature === bannerSig) {
       return;
@@ -6166,30 +6521,131 @@ module.exports = class FlightClubMarkdown extends Plugin {
       this.refreshDockViews(true);
     };
 
+    const dockWrap = doc.createElement("div");
+    dockWrap.className = "fc-live-dock";
+    dockWrap.setAttribute("data-fc-live-dock", "true");
+
+    if (dockEntries.length > 0) {
+      const stack = doc.createElement("div");
+      stack.className = "fc-live-avatar-stack";
+      stack.setAttribute("aria-label", `Онлайн у вольті (${dockEntries.length})`);
+      const shownDock = dockEntries.slice(0, 4);
+      for (const entry of shownDock) {
+        const p = entry.peer;
+        const r = entry.room;
+        const roomIsCanvas = /\.canvas$/i.test(String(r?.path || r?.title || ""));
+        const pAct = this.describePeerActivity(p, roomIsCanvas);
+        const isMaskedOpsec = Boolean(p.opsec && !userProfileUrl(p.userId));
+        const pName = isMaskedOpsec ? "OPSEC" : String(p.name || "Учасник");
+        const docTitle = r?.title || (r?.path ? r.path.split("/").pop()?.replace(/\.(?:md|markdown)$/i, "") : "Документ") || "Документ";
+        const whereText = roomIsCanvas
+          ? (pAct.canvasNodeLabel ? `🎨 «${pAct.canvasNodeLabel}»` : `🎨 ${pAct.text}`)
+          : `${pAct.text}${pAct.heading ? ` · § ${pAct.heading}` : ""}`;
+
+        const avBtn = doc.createElement("button");
+        avBtn.type = "button";
+        avBtn.className = "fc-live-avatar-btn"
+          + (entry.isHere ? " is-here" : " is-away")
+          + (pAct.editing ? " is-editing" : "")
+          + (isMaskedOpsec ? " is-opsec" : "");
+        avBtn.setAttribute("data-fc-avatar-teleport", p.clientId || p.userId || pName);
+        avBtn.setAttribute("aria-label", `${pName} — ${docTitle} (${whereText}). Клік — перейти`);
+        if (!isMaskedOpsec && /^#[0-9a-f]{6}$/i.test(p.color || "")) {
+          avBtn.style.setProperty("--fc-peer-color", p.color);
+        }
+        avBtn.append(buildLiveAvatarNode(doc, p, "fc-dock-avatar"));
+        if (pAct.editing) {
+          const pulse = doc.createElement("span");
+          pulse.className = "fc-live-avatar-pulse";
+          pulse.setAttribute("aria-hidden", "true");
+          avBtn.append(pulse);
+        }
+
+        const popover = doc.createElement("span");
+        popover.className = "fc-live-avatar-popover";
+        popover.setAttribute("role", "tooltip");
+        const popTop = doc.createElement("span");
+        popTop.className = "fc-pop-head";
+        const popName = doc.createElement("strong");
+        popName.textContent = pName;
+        popTop.append(popName);
+        if (p.roleLabel && !isMaskedOpsec) {
+          const popRole = doc.createElement("span");
+          popRole.className = "fc-pop-role";
+          popRole.textContent = p.roleLabel;
+          popTop.append(popRole);
+        }
+        const popDoc = doc.createElement("span");
+        popDoc.className = "fc-pop-doc";
+        popDoc.textContent = `${roomIsCanvas ? "🎨" : "📄"} ${docTitle}${entry.isHere ? " (Тут)" : ""}`;
+        const popAct = doc.createElement("span");
+        popAct.className = "fc-pop-act";
+        popAct.textContent = `${p.source === "web" ? "🌐 Сайт" : "💎 Obsidian"} · ${whereText}`;
+        const popHint = doc.createElement("span");
+        popHint.className = "fc-pop-hint";
+        popHint.textContent = entry.isHere ? "🎯 Клік — до курсора" : "🎯 Клік — телепорт у документ";
+        popover.append(popTop, popDoc, popAct, popHint);
+        avBtn.append(popover);
+
+        avBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (entry.isHere) {
+            void this.jumpToPeerCursor(p, file);
+          } else {
+            void this.teleportToOnlinePeer(r, p);
+          }
+        });
+        stack.append(avBtn);
+      }
+      if (dockEntries.length > 4) {
+        const moreBtn = doc.createElement("button");
+        moreBtn.type = "button";
+        moreBtn.className = "fc-live-avatar-overflow";
+        moreBtn.textContent = `+${dockEntries.length - 4}`;
+        moreBtn.title = `Усього онлайн у вольті: ${dockEntries.length} (клік — відкрити панель)`;
+        moreBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          void this.activateDockView(true);
+        });
+        stack.append(moreBtn);
+      }
+      dockWrap.append(stack);
+    }
+
     const iconTrigger = doc.createElement("button");
     iconTrigger.type = "button";
-    iconTrigger.className = "fc-live-icon-trigger";
+    iconTrigger.className = "fc-live-icon-trigger" + (dockEntries.length > 0 ? " has-avatars" : "");
     iconTrigger.setAttribute("data-fc-live-icon", "true");
     iconTrigger.setAttribute("aria-expanded", String(!bannerCollapsed));
     iconTrigger.title = bannerCollapsed
-      ? `${mode?.label || "Live Edit"}${peers.length ? ` · учасників: ${peers.length + 1}` : ""} (клік — розгорнути)`
+      ? `${mode?.label || "Live Edit"}${dockEntries.length ? ` · онлайн: ${dockEntries.length}` : ""} (клік — розгорнути)`
       : "Згорнути панель Live Edit в іконку";
     const iconDot = doc.createElement("span");
     iconDot.className = "fc-live-dot" + (paused ? " fc-live-dot-paused" : unpaired ? " fc-live-dot-offline" : "");
     iconDot.setAttribute("aria-hidden", "true");
     iconTrigger.append(iconDot);
-    const iconLabel = doc.createElement("span");
-    iconLabel.className = "fc-live-icon-label";
-    iconLabel.textContent = paused ? "Пауза" : unpaired ? "Offline" : (file.extension?.toLowerCase?.() === "canvas" ? "Canvas Live" : "Live");
-    iconTrigger.append(iconLabel);
-    if (peers.length > 0) {
-      const pCount = doc.createElement("span");
-      pCount.className = "fc-live-icon-peers";
-      pCount.textContent = `👥 ${peers.length + 1}`;
-      iconTrigger.append(pCount);
+    if (dockEntries.length === 0) {
+      if (this.vaultConfig?.pairedUser) {
+        iconTrigger.append(buildLiveAvatarNode(doc, {
+          name: this.vaultConfig.pairedUser,
+          userId: this.vaultConfig.pairedUserId,
+          avatarUrl: this.accountAvatarUrl,
+          color: "#10b981",
+        }, "fc-live-solo-avatar"));
+      }
+      const iconLabel = doc.createElement("span");
+      iconLabel.className = "fc-live-icon-label";
+      iconLabel.textContent = paused ? "Пауза" : unpaired ? "Offline" : (file.extension?.toLowerCase?.() === "canvas" ? "Canvas Live" : "Live");
+      iconTrigger.append(iconLabel);
+    } else {
+      const chev = doc.createElement("span");
+      chev.className = "fc-live-icon-chev";
+      chev.textContent = bannerCollapsed ? "▾" : "▴";
+      iconTrigger.append(chev);
     }
     iconTrigger.addEventListener("click", toggleCollapse);
-    banner.append(iconTrigger);
+    dockWrap.append(iconTrigger);
+    banner.append(dockWrap);
 
     const status = doc.createElement("div");
     status.className = "fc-live-status";
@@ -6541,6 +6997,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
         const next = response.json.activity;
         if (JSON.stringify(this.workspaceActivity || []) !== JSON.stringify(next)) {
           this.workspaceActivity = next;
+          this.renderLiveBanner();
           this.refreshDockViews(true);
         }
       }
@@ -13098,10 +13555,11 @@ module.exports = class FlightClubMarkdown extends Plugin {
       this.eventPublishSignatureForFile?.(file) || "",
       ...(activeTab === "live" ? [
         liveMode.state, liveMode.label, Boolean(this.liveModeChanging), Boolean(this.vaultConfig.liveHeroCollapsed), Boolean(this.vaultConfig.radarCollapsed),
+        this.vaultConfig.presenceShowAll !== false,
         this.liveRev || 0, activeLiveTarget?.key || "", sharedPath || "", sharedFileId || "",
-        this.selfLivePeer ? [this.selfLivePeer.name, this.selfLivePeer.line, this.selfLivePeer.actionDetail] : null,
-        activeDocPeers.map(p => [p.clientId || p.userId, p.name, p.line, p.col, p.action, p.editing, p.actionDetail, p.source, p.color]),
-        (this.workspaceActivity || []).map(r => [r.slug, r.fileId || "", r.title, (r.peers || []).map(p => [p.clientId || p.userId, p.name, p.source, p.action, p.actionDetail, p.line, p.editing, p.color])]),
+        this.selfLivePeer ? [this.selfLivePeer.name, this.selfLivePeer.line, this.selfLivePeer.actionDetail, this.selfLivePeer.canvasNodeId, this.selfLivePeer.heading] : null,
+        activeDocPeers.map(p => [p.clientId || p.userId, p.name, p.line, p.col, p.action, p.editing, p.actionDetail, p.source, p.color, p.canvasNodeId, p.canvasNodeLabel, p.heading]),
+        (this.workspaceActivity || []).map(r => [r.slug, r.fileId || "", r.title, (r.peers || []).map(p => [p.clientId || p.userId, p.name, p.source, p.action, p.actionDetail, p.line, p.editing, p.color, p.canvasNodeId, p.canvasNodeLabel, p.heading])]),
         (this.sharedPeers || []).map(p => [p.userId, p.name, p.fileId, p.path, p.editing, p.actionDetail]),
       ] : activeTab === "pages" ? [
         Array.from(this.links.entries()).map(([p, l]) => [p, l.slug, Boolean(l.conflict), Boolean(l.dirtyLocal), this.unreviewedUpdates?.get(p)?.count || 0]),
@@ -13149,6 +13607,359 @@ module.exports = class FlightClubMarkdown extends Plugin {
 
         const isCanvasFile = file?.extension?.toLowerCase?.() === "canvas" || String(file?.path || "").toLowerCase().endsWith(".canvas");
         const isBaseFile = file?.extension?.toLowerCase?.() === "base" || String(file?.path || "").toLowerCase().endsWith(".base");
+        const showLivePanels = Boolean(file || sharedPath || activeDocPeers.length > 0);
+        const showAllOnline = this.vaultConfig.presenceShowAll !== false;
+        const onlineRooms = hasToken && (this.workspaceActivity?.length || this.sharedPeers?.length)
+          ? this.dedupeOnlineRooms(this.workspaceActivity, this.sharedPeers, file, sharedPath)
+          : [];
+        const totalOnlinePeers = onlineRooms.reduce((sum, r) => sum + ((r.peers || []).length), 0);
+
+        const renderPresenceSection = () => {
+          if (platform || isArchiveActive) return;
+          if (!showLivePanels && !(showAllOnline && onlineRooms.length > 0)) return;
+          const radarCollapsed = Boolean(this.vaultConfig.radarCollapsed);
+          const liveHeroCollapsed = Boolean(this.vaultConfig.liveHeroCollapsed);
+          const radarCard = bodySlot.createDiv({
+            cls: "fc-deck-card fc-deck-card-live fc-presence-top-card" + (radarCollapsed ? " is-collapsed" : ""),
+            attr: { "data-collapsed": String(radarCollapsed) },
+          });
+          const radarHead = radarCard.createDiv({ cls: "fc-deck-header fc-deck-header-collapsible" });
+          const uniqueOnlineCount = (() => {
+            if (!showAllOnline) return activeDocPeers.length + (activeLiveTarget || sharedPath ? 1 : 0);
+            const seen = new Set();
+            for (const p of activeDocPeers) seen.add(p.userId || p.clientId || p.name);
+            for (const r of onlineRooms) for (const p of r.peers || []) seen.add(p.userId || p.clientId || p.name);
+            if (activeLiveTarget || sharedPath) seen.add(this.vaultConfig.pairedUserId || this.clientId || "self");
+            return seen.size;
+          })();
+          radarHead.createEl("h4", {
+            text: showAllOnline
+              ? `🌐 Онлайн у вольті (${uniqueOnlineCount})`
+              : activeDocPeers.length > 0
+                ? `👥 Зараз у документі (${activeDocPeers.length + 1})`
+                : activeLiveTarget || sharedPath
+                  ? "👥 Зараз у документі (1 · ви)"
+                  : "👥 Зараз у документі",
+            cls: "fc-presence-heading",
+          });
+          const radarHeadRight = radarHead.createDiv({ cls: "fc-deck-header-actions" });
+
+          const allLbl = radarHeadRight.createEl("label", {
+            cls: "fc-presence-all-toggle",
+            attr: {
+              title: showAllOnline
+                ? "Показуються всі активні учасники у вольті. Зніміть галочку — лише поточний документ."
+                : "Показуються лише учасники поточного документа. Позначте — побачити всіх онлайн у вольті.",
+            },
+          });
+          const allCb = allLbl.createEl("input", {
+            attr: { type: "checkbox", "data-fc-presence-show-all": "true" },
+          });
+          allCb.checked = showAllOnline;
+          allCb.addEventListener("change", () => {
+            this.vaultConfig.presenceShowAll = allCb.checked;
+            void this.persist().catch(() => {});
+            this.liveBannerSignature = null;
+            this.renderLiveBanner();
+            this.refreshDockViews(true);
+          });
+          allLbl.createSpan({ text: "Усі" });
+
+          if (liveHeroCollapsed && file && !platform && liveMode.eligible) {
+            const liveOn = Boolean(this.vaultConfig.liveEnabled);
+            const quickLiveBtn = radarHeadRight.createEl("button", {
+              text: liveOn ? "🟢 Live" : "⏸ Пауза",
+              cls: "fc-collapse-chip fc-quick-live-chip",
+              attr: {
+                type: "button",
+                "aria-pressed": String(liveOn),
+                title: liveOn ? "Призупинити Live Edit" : "Увімкнути Live Edit",
+              },
+            });
+            quickLiveBtn.disabled = Boolean(this.liveModeChanging);
+            quickLiveBtn.addEventListener("click", (e) => {
+              e.stopPropagation();
+              void this.toggleLiveMode();
+            });
+          }
+          const radarCollapseBtn = radarHeadRight.createEl("button", {
+            text: radarCollapsed ? "▸" : "▾",
+            cls: "fc-collapse-chip",
+            attr: {
+              type: "button",
+              "data-fc-collapse": "radar-card",
+              "aria-expanded": String(!radarCollapsed),
+              title: radarCollapsed ? "Розгорнути панель учасників" : "Згорнути панель учасників",
+            },
+          });
+          radarCollapseBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            this.vaultConfig.radarCollapsed = !this.vaultConfig.radarCollapsed;
+            void this.persist().catch(() => {});
+            this.refreshDockViews(true);
+          });
+
+          const radarBody = radarCard.createDiv({ cls: "fc-radar-body" });
+          if (radarCollapsed) radarBody.hidden = true;
+
+          if (hasToken && (activeLiveTarget || sharedPath)) {
+            const selfPeer = this.selfLivePeer || {
+              name: this.vaultConfig.pairedUser || "Ви",
+              userId: this.vaultConfig.pairedUserId,
+              avatarUrl: this.accountAvatarUrl,
+              roleLabel: this.vaultConfig.pairedRole || "Учасник",
+              hub: this.vaultConfig.pairedHub || null,
+              color: "#10b981",
+            };
+            const selfCard = radarBody.createDiv({ cls: "fc-peer-card fc-peer-card-self" });
+            const sTop = selfCard.createDiv({ cls: "fc-peer-top" });
+            const sId = sTop.createDiv({ cls: "fc-peer-identity" });
+            addAvatar(sId, selfPeer);
+            const sNameWrap = sId.createDiv();
+            sNameWrap.createEl("strong", { text: `${selfPeer.name} (Ви)` });
+            sNameWrap.createEl("div", {
+              cls: "fc-deck-row-meta",
+              text: `💎 Цей Obsidian${selfPeer.roleLabel ? " · " + selfPeer.roleLabel : ""}${selfPeer.hub ? " · " + selfPeer.hub : ""}`,
+            });
+            const sAct = this.describePeerActivity(selfPeer, isCanvasFile);
+            const sActRow = selfCard.createDiv({ cls: "fc-peer-activity" + (sAct.editing ? " is-editing" : "") });
+            const sActStatus = sActRow.createSpan({ cls: "fc-peer-activity-status" });
+            sActStatus.createSpan({
+              cls: "fc-live-state-dot" + (sAct.editing ? " is-editing" : ""),
+              attr: { "aria-hidden": "true" },
+            });
+            sActStatus.createSpan({
+              text: `${sAct.icon} ${selfPeer.actionDetail ? sAct.text : (this.vaultConfig.liveEnabled ? (isCanvasFile ? "Canvas Live активний" : "Live Edit активний") : sAct.text)}`,
+            });
+          }
+
+          if (activeDocPeers.length > 0) {
+            for (const peer of activeDocPeers) {
+              const pCard = radarBody.createDiv({ cls: "fc-peer-card" + (peer.opsec ? " is-opsec" : "") });
+              if (peer.color) pCard.style.borderLeft = `3px solid ${peer.color}`;
+              const pTop = pCard.createDiv({ cls: "fc-peer-top" });
+              const pId = pTop.createDiv({ cls: "fc-peer-identity" });
+              addAvatar(pId, peer);
+              const pNameWrap = pId.createDiv();
+              const profUrl = userProfileUrl(peer.userId);
+              const isSameUser = peer.userId && peer.userId === this.vaultConfig.pairedUserId;
+              const suffix = peer.clientId === this.clientId ? " (ви)" : isSameUser ? " (ваш інший пристрій)" : "";
+              const titleLine = pNameWrap.createDiv({ cls: "fc-peer-title-row" });
+              if (profUrl) {
+                const pLink = titleLine.createEl("a", {
+                  text: `${peer.name}${suffix} ↗`,
+                  cls: "fc-peer-name-link",
+                  attr: {
+                    href: profUrl,
+                    target: "_blank",
+                    rel: "noopener noreferrer",
+                    title: `Відкрити профіль ${peer.name} на flightclub.com.ua`,
+                  },
+                });
+                pLink.addEventListener("click", (e) => e.stopPropagation());
+              } else if (!peer.opsec) {
+                titleLine.createEl("strong", {
+                  text: `${peer.name}${suffix}`,
+                });
+              }
+              if (peer.opsec) {
+                titleLine.createSpan({ cls: "fc-opsec-badge", text: "OPSEC" });
+              }
+              titleLine.createSpan({ text: "Тут", cls: "fc-online-here-pill" });
+              pNameWrap.createEl("div", {
+                text: `${peer.source === "web" ? "🌐 Сайт" : "💎 Obsidian"} · ${peer.roleLabel || (peer.editing ? "Редагує" : "Учасник")}${peer.hub ? " · " + peer.hub : ""}`,
+                cls: "fc-deck-row-meta",
+              });
+
+              const pAct = this.describePeerActivity(peer, isCanvasFile);
+              const actRow = pCard.createDiv({ cls: "fc-peer-activity" + (pAct.editing ? " is-editing" : "") });
+              const actStatus = actRow.createSpan({ cls: "fc-peer-activity-status" });
+              actStatus.createSpan({
+                cls: "fc-live-state-dot" + (pAct.editing ? " is-editing" : ""),
+                attr: { "aria-hidden": "true" },
+              });
+              actStatus.createSpan({ text: `${pAct.icon} ${pAct.text}${pAct.heading ? ` · § ${pAct.heading}` : ""}` });
+
+              if (activeLiveTarget) {
+                const actBtns = actRow.createDiv({ cls: "fc-deck-grid fc-peer-action-btns" });
+                const jumpBtn = actBtns.createEl("button", {
+                  text: isCanvasFile
+                    ? (pAct.canvasNodeLabel ? `🎨 ${pAct.canvasNodeLabel}` : "🎨 У Canvas")
+                    : `🎯 Ряд. ${pAct.line || peer.line || 1}`,
+                  cls: "fc-deck-btn fc-teleport-btn",
+                  attr: {
+                    type: "button",
+                    "data-fc-jump-peer": peer.clientId || peer.userId || peer.name || "peer",
+                    title: isCanvasFile ? "Перейти та сфокусувати картку колеги у Canvas" : "Телепортуватися до живого курсора учасника в редакторі",
+                  },
+                });
+                jumpBtn.addEventListener("click", () => void this.jumpToPeerCursor(peer, file));
+
+                if (profUrl) {
+                  const openProfBtn = actBtns.createEl("button", {
+                    text: "👤 Профіль",
+                    cls: "fc-deck-btn",
+                    attr: { type: "button", title: profUrl },
+                  });
+                  openProfBtn.addEventListener("click", () => this.openSite(profUrl));
+                }
+              }
+            }
+          }
+
+          if (showAllOnline && onlineRooms.length > 0) {
+            const roomsWrap = radarBody.createDiv({
+              cls: "fc-online-rooms-embed",
+              attr: { "data-fc-online-rooms": "" },
+            });
+            const roomsSubHead = roomsWrap.createDiv({ cls: "fc-online-subhead" });
+            roomsSubHead.createSpan({
+              text: `🌐 Зараз онлайн у документах (${totalOnlinePeers})`,
+              cls: "fc-online-subhead-label",
+            });
+            const list = roomsWrap.createEl("ul", { cls: "fc-workspace-activity-list fc-online-rooms-list" });
+            for (const room of onlineRooms) {
+              const roomIsCanvas = /\.canvas$/i.test(String(room.path || room.title || ""));
+              const isCurrent = Boolean(
+                (room.slug && room.slug === this.liveSlug) ||
+                (room.kind === "drive" && room.fileId && (this.liveSession?.fileId === room.fileId || this.resolveDriveIdForFile?.(file) === room.fileId)) ||
+                (room.kind === "shared" && room.path && sharedPath === room.path)
+              );
+              const li = list.createEl("li", { cls: "fc-online-room" + (isCurrent ? " is-current" : "") });
+              const roomTop = li.createDiv({ cls: "fc-online-room-head" });
+              const roomTitleBtn = roomTop.createEl("button", {
+                text: `${roomIsCanvas ? "🎨" : "📄"} ${room.title || room.path || room.slug}`,
+                cls: "fc-online-room-title",
+                attr: {
+                  type: "button",
+                  title: isCurrent ? "Ви вже в цьому документі" : `Відкрити ${room.path || room.title || room.slug} в Obsidian`,
+                },
+              });
+              roomTitleBtn.addEventListener("click", () => {
+                const firstPeer = (room.peers || []).find((p) => p.clientId !== this.clientId) || (room.peers || [])[0] || null;
+                void this.teleportToOnlinePeer(room, firstPeer);
+              });
+              const roomHeadRight = roomTop.createDiv({ cls: "fc-online-room-actions" });
+              if (isCurrent) {
+                roomHeadRight.createSpan({ text: "Тут", cls: "fc-online-here-pill" });
+              }
+              if (room.kind === "drive" && room.fileId) {
+                const gDriveUrl = driveOpenUrlForPath(room.fileId, room.path);
+                const webUrl = `${SITE}/markdown?view=vault&file=${encodeURIComponent(room.fileId)}&edit=1`;
+                const docsBtn = roomHeadRight.createEl("button", {
+                  text: "Docs ↗",
+                  cls: "fc-online-mini-link",
+                  attr: { type: "button", title: `Відкрити у Google Docs: ${gDriveUrl}` },
+                });
+                docsBtn.addEventListener("click", (e) => {
+                  e.stopPropagation();
+                  this.openSite(gDriveUrl);
+                });
+                const vaultBtn = roomHeadRight.createEl("button", {
+                  text: "Vault ↗",
+                  cls: "fc-online-mini-link",
+                  attr: { type: "button", title: `Відкрити у FlightClub Drive Vault: ${webUrl}` },
+                });
+                vaultBtn.addEventListener("click", (e) => {
+                  e.stopPropagation();
+                  this.openSite(webUrl);
+                });
+              }
+
+              const peersBox = li.createDiv({ cls: "fc-online-peer-list" });
+              for (const peer of room.peers || []) {
+                const isSelfClient = Boolean(peer.clientId && peer.clientId === this.clientId);
+                const isSameUser = Boolean(!isSelfClient && peer.userId && peer.userId === this.vaultConfig.pairedUserId);
+                const pInfo = this.describePeerActivity(peer, roomIsCanvas);
+                const pRow = peersBox.createDiv({
+                  cls: "fc-online-peer-row" + (pInfo.editing ? " is-editing" : "") + (isSelfClient ? " is-self" : ""),
+                });
+                if (peer.color) pRow.style.borderLeftColor = peer.color;
+                addAvatar(pRow, peer);
+                const pMain = pRow.createDiv({ cls: "fc-online-peer-main" });
+                const pIdentity = pMain.createDiv({ cls: "fc-online-peer-who" });
+                pIdentity.createSpan({
+                  cls: "fc-live-state-dot" + (pInfo.editing ? " is-editing" : ""),
+                  attr: { "aria-hidden": "true" },
+                });
+                const suffix = isSelfClient ? " (ви)" : isSameUser ? " (інший пристрій)" : "";
+                pIdentity.createEl("strong", { text: `${peer.name || "Учасник"}${suffix}`, cls: "fc-online-peer-name" });
+                pIdentity.createSpan({
+                  text: peer.source === "web" ? "🌐 Сайт" : "💎 Obsidian",
+                  cls: "fc-online-source-pill",
+                });
+                const statusMeta = [
+                  `${pInfo.icon} ${pInfo.text}`,
+                  pInfo.heading ? `§ ${pInfo.heading}` : "",
+                  peer.roleLabel || "",
+                  peer.hub || "",
+                ].filter(Boolean).join(" · ");
+                pMain.createEl("div", {
+                  text: statusMeta,
+                  cls: "fc-online-peer-status" + (pInfo.editing ? " is-editing" : ""),
+                });
+
+                const teleportBtn = pRow.createEl("button", {
+                  text: isCurrent
+                    ? (roomIsCanvas ? (pInfo.canvasNodeLabel ? `🎨 ${pInfo.canvasNodeLabel}` : "🎨 Фокус") : `🎯 Ряд. ${pInfo.line || 1}`)
+                    : (roomIsCanvas ? "🎨 Телепорт" : (pInfo.line ? `🎯 Ряд. ${pInfo.line}` : "🎯 Телепорт")),
+                  cls: "fc-deck-btn fc-teleport-btn",
+                  attr: {
+                    type: "button",
+                    "data-fc-teleport-peer": peer.clientId || peer.userId || peer.name || "peer",
+                    title: isCurrent
+                      ? `Перейти до позиції ${peer.name} у цьому документі`
+                      : `Телепортуватися до ${peer.name} у «${room.title || room.slug}»${pInfo.line ? ` (ряд. ${pInfo.line})` : pInfo.canvasNodeLabel ? ` («${pInfo.canvasNodeLabel}»)` : ""}`,
+                  },
+                });
+                teleportBtn.addEventListener("click", (e) => {
+                  e.stopPropagation();
+                  void this.teleportToOnlinePeer(room, peer);
+                });
+                pRow.addEventListener("click", () => void this.teleportToOnlinePeer(room, peer));
+              }
+            }
+          }
+
+          if (!showAllOnline && onlineRooms.length > 0) {
+            const otherPeers = onlineRooms
+              .filter((r) => !(
+                (r.slug && r.slug === this.liveSlug) ||
+                (r.kind === "drive" && r.fileId && (this.liveSession?.fileId === r.fileId || this.resolveDriveIdForFile?.(file) === r.fileId)) ||
+                (r.kind === "shared" && r.path && sharedPath === r.path)
+              ))
+              .reduce((sum, r) => sum + ((r.peers || []).length), 0);
+            if (otherPeers > 0) {
+              const showAllHint = radarBody.createEl("button", {
+                text: `🌐 Ще ${otherPeers} онлайн в інших документах · Показати всіх`,
+                cls: "fc-deck-btn fc-presence-show-all-btn",
+                attr: { type: "button" },
+              });
+              showAllHint.addEventListener("click", () => {
+                this.vaultConfig.presenceShowAll = true;
+                void this.persist().catch(() => {});
+                this.liveBannerSignature = null;
+                this.renderLiveBanner();
+                this.refreshDockViews(true);
+              });
+            }
+          }
+
+          if (activeDocPeers.length === 0 && !(showAllOnline && onlineRooms.length > 0)) {
+            radarBody.createEl("p", {
+              text: activeLiveTarget
+                ? "Поки інших учасників у вольті не видно. Щойно колега відкриє нотатку або Canvas на сайті чи в Obsidian, він одразу з’явиться тут."
+                : sharedPath
+                  ? "Поки ви самі в цій спільній нотатці."
+                  : "Синхронізуйте нотатку з Google Drive або прив’яжіть до /m/, щоб бачити учасників у реальному часі.",
+              cls: "fc-deck-sub",
+            });
+          }
+        };
+
+        // Elevate online participants & Live Radar directly to the TOP under «Учасники та Live»
+        renderPresenceSection();
+
         // Active Note / Canvas / Base Card
         const noteCard = bodySlot.createDiv({ cls: "fc-deck-card" });
         const noteHeader = noteCard.createDiv({ cls: "fc-deck-header" });
@@ -13558,7 +14369,6 @@ module.exports = class FlightClubMarkdown extends Plugin {
           renderShareControls();
         }
 
-        const showLivePanels = Boolean(file || sharedPath || activeDocPeers.length > 0);
         const liveHeroCollapsed = Boolean(this.vaultConfig.liveHeroCollapsed);
         if (showLivePanels && !isArchiveActive) {
         const liveHero = noteCard.createDiv({
@@ -13605,181 +14415,6 @@ module.exports = class FlightClubMarkdown extends Plugin {
         }
         }
 
-        const renderRadarSection = () => {
-          if (!(!platform && showLivePanels && !isArchiveActive)) return;
-          const radarCollapsed = Boolean(this.vaultConfig.radarCollapsed);
-          const radarCard = bodySlot.createDiv({
-            cls: "fc-deck-card fc-deck-card-live" + (radarCollapsed ? " is-collapsed" : ""),
-            attr: { "data-collapsed": String(radarCollapsed) },
-          });
-          const radarHead = radarCard.createDiv({ cls: "fc-deck-header fc-deck-header-collapsible" });
-          radarHead.createEl("h4", {
-            text: activeDocPeers.length > 0
-              ? `👥 Зараз у документі (${activeDocPeers.length + 1})`
-              : activeLiveTarget || sharedPath
-                ? "👥 Зараз у документі (1 · ви)"
-                : "👥 Зараз у документі",
-            cls: "fc-deck-title",
-          });
-          const radarHeadRight = radarHead.createDiv({ cls: "fc-deck-header-actions" });
-          if (liveHeroCollapsed && file && !platform && liveMode.eligible) {
-            const liveOn = Boolean(this.vaultConfig.liveEnabled);
-            const quickLiveBtn = radarHeadRight.createEl("button", {
-              text: liveOn ? "🟢 Live" : "⏸ Пауза",
-              cls: "fc-collapse-chip fc-quick-live-chip",
-              attr: {
-                type: "button",
-                "aria-pressed": String(liveOn),
-                title: liveOn ? "Призупинити Live Edit" : "Увімкнути Live Edit",
-              },
-            });
-            quickLiveBtn.disabled = Boolean(this.liveModeChanging);
-            quickLiveBtn.addEventListener("click", (e) => {
-              e.stopPropagation();
-              void this.toggleLiveMode();
-            });
-          }
-          radarHeadRight.createSpan({
-            text: activeLiveTarget?.kind === "drive"
-              ? `Google Drive · rev #${this.liveRev}`
-              : activeLink
-                ? `/m/${activeLink.slug} · rev #${this.liveRev}`
-                : sharedPath
-                  ? "Опублікований вольт"
-                  : "Очікування",
-            cls: "fc-deck-badge fc-deck-badge-ok",
-          });
-          const radarCollapseBtn = radarHeadRight.createEl("button", {
-            text: radarCollapsed ? "▸ Розгорнути" : "▾ Згорнути",
-            cls: "fc-collapse-chip",
-            attr: {
-              type: "button",
-              "data-fc-collapse": "radar-card",
-              "aria-expanded": String(!radarCollapsed),
-              title: radarCollapsed ? "Розгорнути блок «Зараз у документі»" : "Згорнути блок «Зараз у документі»",
-            },
-          });
-          radarCollapseBtn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            this.vaultConfig.radarCollapsed = !this.vaultConfig.radarCollapsed;
-            void this.persist().catch(() => {});
-            this.refreshDockViews(true);
-          });
-
-          const radarBody = radarCard.createDiv({ cls: "fc-radar-body" });
-          if (radarCollapsed) radarBody.hidden = true;
-
-          if (hasToken && (activeLiveTarget || sharedPath)) {
-            const selfPeer = this.selfLivePeer || {
-              name: this.vaultConfig.pairedUser || "Ви",
-              userId: this.vaultConfig.pairedUserId,
-              avatarUrl: this.accountAvatarUrl,
-              roleLabel: this.vaultConfig.pairedRole || "Учасник",
-              hub: this.vaultConfig.pairedHub || null,
-              color: "#10b981",
-            };
-            const selfCard = radarBody.createDiv({ cls: "fc-peer-card fc-peer-card-self" });
-            const sTop = selfCard.createDiv({ cls: "fc-peer-top" });
-            const sId = sTop.createDiv({ cls: "fc-peer-identity" });
-            addAvatar(sId, selfPeer);
-            const sNameWrap = sId.createDiv();
-            sNameWrap.createEl("strong", { text: `${selfPeer.name} (Ви)` });
-            sNameWrap.createEl("div", {
-              cls: "fc-deck-row-meta",
-              text: `💎 Цей Obsidian${selfPeer.roleLabel ? " · " + selfPeer.roleLabel : ""}${selfPeer.hub ? " · " + selfPeer.hub : ""}`,
-            });
-            const sAct = this.describePeerActivity(selfPeer, isCanvasFile);
-            const sActRow = selfCard.createDiv({ cls: "fc-peer-activity" + (sAct.editing ? " is-editing" : "") });
-            const sActStatus = sActRow.createSpan({ cls: "fc-peer-activity-status" });
-            sActStatus.createSpan({
-              cls: "fc-live-state-dot" + (sAct.editing ? " is-editing" : ""),
-              attr: { "aria-hidden": "true" },
-            });
-            sActStatus.createSpan({
-              text: `${sAct.icon} ${selfPeer.actionDetail ? sAct.text : (this.vaultConfig.liveEnabled ? (isCanvasFile ? "Canvas Live активний" : "Live Edit активний") : sAct.text)}`,
-            });
-          }
-
-          if (activeDocPeers.length === 0) {
-            radarBody.createEl("p", {
-              text: activeLiveTarget
-                ? "Поки ви працюєте самі. Коли інший учасник відкриє цей документ на сайті або в Obsidian, тут одразу з’явиться його аватар, профіль і живий курсор, а Live Edit увімкнеться сам."
-                : sharedPath
-                  ? "Поки ви самі в цій спільній нотатці. Учасники з Опублікованого вольту та сайту з’являться тут."
-                  : "Синхронізуйте нотатку з Google Drive або прив’яжіть до /m/, щоб бачити учасників у реальному часі.",
-              cls: "fc-deck-sub",
-            });
-          } else {
-            for (const peer of activeDocPeers) {
-              const pCard = radarBody.createDiv({ cls: "fc-peer-card" + (peer.opsec ? " is-opsec" : "") });
-              if (peer.color) pCard.style.borderLeft = `3px solid ${peer.color}`;
-              const pTop = pCard.createDiv({ cls: "fc-peer-top" });
-              const pId = pTop.createDiv({ cls: "fc-peer-identity" });
-              addAvatar(pId, peer);
-              const pNameWrap = pId.createDiv();
-              const profUrl = userProfileUrl(peer.userId);
-              const isSameUser = peer.userId && peer.userId === this.vaultConfig.pairedUserId;
-              const suffix = peer.clientId === this.clientId ? " (ви)" : isSameUser ? " (ваш інший пристрій)" : "";
-              const titleLine = pNameWrap.createDiv({ cls: "fc-peer-title-row" });
-              if (profUrl) {
-                const pLink = titleLine.createEl("a", {
-                  text: `${peer.name}${suffix} ↗`,
-                  cls: "fc-peer-name-link",
-                  attr: {
-                    href: profUrl,
-                    target: "_blank",
-                    rel: "noopener noreferrer",
-                    title: `Відкрити профіль ${peer.name} на flightclub.com.ua`,
-                  },
-                });
-                pLink.addEventListener("click", (e) => e.stopPropagation());
-              } else if (!peer.opsec) {
-                titleLine.createEl("strong", {
-                  text: `${peer.name}${suffix}`,
-                });
-              }
-              if (peer.opsec) {
-                titleLine.createSpan({ cls: "fc-opsec-badge", text: "OPSEC" });
-              }
-              pNameWrap.createEl("div", {
-                text: `${peer.source === "web" ? "🌐 Сайт" : "💎 Obsidian"} · ${peer.roleLabel || (peer.editing ? "Редагує" : "Учасник")}${peer.hub ? " · " + peer.hub : ""}`,
-                cls: "fc-deck-row-meta",
-              });
-
-              const pAct = this.describePeerActivity(peer, isCanvasFile);
-              const actRow = pCard.createDiv({ cls: "fc-peer-activity" + (pAct.editing ? " is-editing" : "") });
-              const actStatus = actRow.createSpan({ cls: "fc-peer-activity-status" });
-              actStatus.createSpan({
-                cls: "fc-live-state-dot" + (pAct.editing ? " is-editing" : ""),
-                attr: { "aria-hidden": "true" },
-              });
-              actStatus.createSpan({ text: `${pAct.icon} ${pAct.text}` });
-
-              if (activeLiveTarget) {
-                const actBtns = actRow.createDiv({ cls: "fc-deck-grid fc-peer-action-btns" });
-                const jumpBtn = actBtns.createEl("button", {
-                  text: isCanvasFile ? "🎨 У Canvas" : `🎯 Ряд. ${pAct.line || peer.line || 1}`,
-                  cls: "fc-deck-btn fc-teleport-btn",
-                  attr: {
-                    type: "button",
-                    "data-fc-jump-peer": peer.clientId || peer.userId || peer.name || "peer",
-                    title: isCanvasFile ? "Перейти до активного Canvas" : "Телепортуватися до живого курсора учасника в редакторі",
-                  },
-                });
-                jumpBtn.addEventListener("click", () => void this.jumpToPeerCursor(peer, file));
-
-                if (profUrl) {
-                  const openProfBtn = actBtns.createEl("button", {
-                    text: "👤 Профіль",
-                    cls: "fc-deck-btn",
-                    attr: { type: "button", title: profUrl },
-                  });
-                  openProfBtn.addEventListener("click", () => this.openSite(profUrl));
-                }
-              }
-            }
-          }
-        };
         if (file && !isArchiveActive) {
           this.renderEventPublishSidebarCard?.(bodySlot, file, hasToken);
         }
@@ -14025,118 +14660,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
           }
         };
 
-        if (activeDocPeers.length > 0) {
-          renderRadarSection();
-          renderUpdatesSection();
-        } else {
-          renderUpdatesSection();
-          renderRadarSection();
-        }
-
-        if (hasToken && (this.workspaceActivity?.length || this.sharedPeers?.length)) {
-          const onlineRooms = this.dedupeOnlineRooms(this.workspaceActivity, this.sharedPeers, file, sharedPath);
-          if (onlineRooms.length) {
-          const totalOnlinePeers = onlineRooms.reduce((sum, r) => sum + ((r.peers || []).length), 0);
-          const roomsCard = bodySlot.createDiv({ cls: "fc-deck-card fc-online-rooms-card", attr: { "data-fc-online-rooms": "" } });
-          const roomsHead = roomsCard.createDiv({ cls: "fc-deck-header" });
-          roomsHead.createEl("h4", { cls: "fc-deck-title", text: `🌐 Зараз онлайн у документах (${totalOnlinePeers})` });
-          const list = roomsCard.createEl("ul", { cls: "fc-workspace-activity-list fc-online-rooms-list" });
-          for (const room of onlineRooms) {
-            const roomIsCanvas = /\.canvas$/i.test(String(room.path || room.title || ""));
-            const isCurrent = Boolean(
-              (room.slug && room.slug === this.liveSlug) ||
-              (room.kind === "drive" && room.fileId && (this.liveSession?.fileId === room.fileId || this.resolveDriveIdForFile?.(file) === room.fileId)) ||
-              (room.kind === "shared" && room.path && sharedPath === room.path)
-            );
-            const li = list.createEl("li", { cls: "fc-online-room" + (isCurrent ? " is-current" : "") });
-            const roomTop = li.createDiv({ cls: "fc-online-room-head" });
-            const roomTitleBtn = roomTop.createEl("button", {
-              text: `${roomIsCanvas ? "🎨" : "📄"} ${room.title || room.path || room.slug}`,
-              cls: "fc-online-room-title",
-              attr: {
-                type: "button",
-                title: isCurrent ? "Ви вже в цьому документі" : `Відкрити ${room.path || room.title || room.slug} в Obsidian`,
-              },
-            });
-            roomTitleBtn.addEventListener("click", () => {
-              const firstPeer = (room.peers || []).find((p) => p.clientId !== this.clientId) || (room.peers || [])[0] || null;
-              void this.teleportToOnlinePeer(room, firstPeer);
-            });
-            const roomHeadRight = roomTop.createDiv({ cls: "fc-online-room-actions" });
-            if (isCurrent) {
-              roomHeadRight.createSpan({ text: "Тут", cls: "fc-online-here-pill" });
-            }
-            if (room.kind === "drive" && room.fileId) {
-              const gDriveUrl = driveOpenUrlForPath(room.fileId, room.path);
-              const webUrl = `${SITE}/markdown?view=vault&file=${encodeURIComponent(room.fileId)}&edit=1`;
-              const docsBtn = roomHeadRight.createEl("button", {
-                text: "Docs ↗",
-                cls: "fc-online-mini-link",
-                attr: { type: "button", title: `Відкрити у Google Docs: ${gDriveUrl}` },
-              });
-              docsBtn.addEventListener("click", (e) => {
-                e.stopPropagation();
-                this.openSite(gDriveUrl);
-              });
-              const vaultBtn = roomHeadRight.createEl("button", {
-                text: "Vault ↗",
-                cls: "fc-online-mini-link",
-                attr: { type: "button", title: `Відкрити у FlightClub Drive Vault: ${webUrl}` },
-              });
-              vaultBtn.addEventListener("click", (e) => {
-                e.stopPropagation();
-                this.openSite(webUrl);
-              });
-            }
-
-            const peersBox = li.createDiv({ cls: "fc-online-peer-list" });
-            for (const peer of room.peers || []) {
-              const isSelfClient = Boolean(peer.clientId && peer.clientId === this.clientId);
-              const isSameUser = Boolean(!isSelfClient && peer.userId && peer.userId === this.vaultConfig.pairedUserId);
-              const pInfo = this.describePeerActivity(peer, roomIsCanvas);
-              const pRow = peersBox.createDiv({
-                cls: "fc-online-peer-row" + (pInfo.editing ? " is-editing" : "") + (isSelfClient ? " is-self" : ""),
-              });
-              if (peer.color) pRow.style.borderLeftColor = peer.color;
-              const pMain = pRow.createDiv({ cls: "fc-online-peer-main" });
-              const pIdentity = pMain.createDiv({ cls: "fc-online-peer-who" });
-              pIdentity.createSpan({
-                cls: "fc-live-state-dot" + (pInfo.editing ? " is-editing" : ""),
-                attr: { "aria-hidden": "true" },
-              });
-              const suffix = isSelfClient ? " (ви)" : isSameUser ? " (інший пристрій)" : "";
-              pIdentity.createEl("strong", { text: `${peer.name || "Учасник"}${suffix}`, cls: "fc-online-peer-name" });
-              pIdentity.createSpan({
-                text: peer.source === "web" ? "🌐 Сайт" : "💎 Obsidian",
-                cls: "fc-online-source-pill",
-              });
-              pMain.createEl("div", {
-                text: `${pInfo.icon} ${pInfo.text}`,
-                cls: "fc-online-peer-status" + (pInfo.editing ? " is-editing" : ""),
-              });
-
-              const teleportBtn = pRow.createEl("button", {
-                text: isCurrent
-                  ? (roomIsCanvas ? "🎨 Фокус" : `🎯 Ряд. ${pInfo.line || 1}`)
-                  : (pInfo.line && !roomIsCanvas ? `🎯 Ряд. ${pInfo.line}` : "🎯 Телепорт"),
-                cls: "fc-deck-btn fc-teleport-btn",
-                attr: {
-                  type: "button",
-                  "data-fc-teleport-peer": peer.clientId || peer.userId || peer.name || "peer",
-                  title: isCurrent
-                    ? `Перейти до позиції ${peer.name} у цьому документі`
-                    : `Телепортуватися до ${peer.name} у «${room.title || room.slug}»${pInfo.line ? ` (ряд. ${pInfo.line})` : ""}`,
-                },
-              });
-              teleportBtn.addEventListener("click", (e) => {
-                e.stopPropagation();
-                void this.teleportToOnlinePeer(room, peer);
-              });
-              pRow.addEventListener("click", () => void this.teleportToOnlinePeer(room, peer));
-            }
-          }
-          }
-        }
+        renderUpdatesSection();
       } else if (activeTab === "entities") {
         this.renderMentionSearch(bodySlot.createDiv({ cls: "fc-deck-card" }), { file, state: opts.mentionState });
       } else if (activeTab === "graph") {
