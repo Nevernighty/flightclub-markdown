@@ -4,8 +4,9 @@ const path = require("node:path");
 
 const root = __dirname;
 const srcDir = path.join(root, "src");
-const source = fs.readFileSync(path.join(srcDir, "main.js"), "utf8");
-const input = (name) => fs.readFileSync(path.join(srcDir, name), "utf8");
+const toLf = (s) => String(s).replace(/\r\n/g, "\n");
+const source = toLf(fs.readFileSync(path.join(srcDir, "main.js"), "utf8"));
+const input = (name) => toLf(fs.readFileSync(path.join(srcDir, name), "utf8"));
 
 const marker = "__FLIGHTCLUB_LOGO_DATA__";
 if (source.split(marker).length !== 2) throw new Error("Expected one logo placeholder");
@@ -35,7 +36,7 @@ const bundledEventPublish = "const FC_EVENT_PUBLISH = (() => {\nconst module = {
 
 const directInstallerMarker = "/*__FC_DIRECT_PLUGIN_INSTALLER__*/";
 if (source.split(directInstallerMarker).length !== 2) throw new Error("Expected one direct installer placeholder");
-const directInstaller = "const FC_COMMUNITY_BUILD = true;\nconst fcCanDirectInstallCommunityPlugin = () => false;\nconst fcDirectInstallCommunityPlugin = null;";
+const directInstaller = "const FC_COMMUNITY_BUILD = true;\nconst fcCanDirectInstallCommunityPlugin = () => false;\nconst fcDirectInstallCommunityPlugin = null;\nconst fcOpenExternalBrowser = () => false;";
 
 const updateMarker = "/*__FC_PLUGIN_UPDATE__*/";
 if (source.split(updateMarker).length !== 2) throw new Error("Expected one updater placeholder");
@@ -60,20 +61,18 @@ if (source.split(diffMarker).length !== 2) throw new Error("Expected one Markdow
 const sharedDiff = input("markdown-diff.mjs").replace(/^export function /gm, "function ");
 const bundledDiff = "const FC_MARKDOWN_DIFF = (() => {\n" + sharedDiff + "\nreturn { diffMarkdownLines, diffInlineWords };\n})();";
 
-fs.writeFileSync(
-  path.join(root, "main.js"),
-  source
-    .replace(marker, () => "data:image/png;base64," + logo)
-    .replace(sync, () => bundled)
-    .replace(teamPluginsMarker, () => bundledTeamPlugins)
-    .replace(eventPublishMarker, () => bundledEventPublish)
-    .replace(directInstallerMarker, () => directInstaller)
-    .replace(updateMarker, () => updater)
-    .replace(mediaMarker, () => bundledMedia)
-    .replace(diffMarker, () => bundledDiff)
-    .replace(graphMarker, () => insights),
-);
+const builtJs = source
+  .replace(marker, () => "data:image/png;base64," + logo)
+  .replace(sync, () => bundled)
+  .replace(teamPluginsMarker, () => bundledTeamPlugins)
+  .replace(eventPublishMarker, () => bundledEventPublish)
+  .replace(directInstallerMarker, () => directInstaller)
+  .replace(updateMarker, () => updater)
+  .replace(mediaMarker, () => bundledMedia)
+  .replace(diffMarker, () => bundledDiff)
+  .replace(graphMarker, () => insights);
+fs.writeFileSync(path.join(root, "main.js"), toLf(builtJs), "utf8");
 
 const baseCss = input("styles.css");
 const mediaCss = input("markdown-youtube.css");
-fs.writeFileSync(path.join(root, "styles.css"), baseCss + "\n" + mediaCss);
+fs.writeFileSync(path.join(root, "styles.css"), toLf(baseCss + "\n" + mediaCss), "utf8");

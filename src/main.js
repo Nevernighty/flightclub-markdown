@@ -9,7 +9,7 @@ const { MarkdownView, Menu, Modal, Notice, Platform, Plugin, TFile, TFolder, req
 /*__FC_PLUGIN_UPDATE__*/
 /*__FC_MARKDOWN_MEDIA__*/
 /*__FC_MARKDOWN_DIFF__*/
-const PLUGIN_VERSION = "1.10.0";
+const PLUGIN_VERSION = "1.11.2";
 const SHARED_FOLDER = "FlightClub Shared/";
 const SYNC_ARCHIVE_PREFIX = "FlightClub Sync Archive";
 const DEFAULT_HUB_CITIES = ["Київ", "Житомир", "Луцьк", "Львів"];
@@ -762,6 +762,160 @@ function extractObsidianNoteDate(file, fm = null) {
   return null;
 }
 
+const GRAPH_LAYOUT_ORDER = ["obsidian", "roadmap", "zones", "gantt"];
+const GRAPH_LAYOUT_META = {
+  obsidian: { id: "obsidian", label: "Фізика", short: "Фізика", desc: "Вільний силовий граф зв’язків з фізикою Obsidian" },
+  roadmap: { id: "roadmap", label: "Роадмап", short: "Роадмап", desc: "Хронологічна лінія за датами з чекпоїнтами років і фізикою" },
+  zones: { id: "zones", label: "Зони", short: "Зони", desc: "Структуровані кольорові зони за обраною категоризацією" },
+  gantt: { id: "gantt", label: "Гантт", short: "Гантт", desc: "Комплексна діаграма Гантта по проєктах, напрямах і датах" },
+};
+
+function fcGraphIconSvg(kind, doc, size = 14) {
+  if (!doc?.createElementNS) return null;
+  const ns = "http://www.w3.org/2000/svg";
+  const svgEl = doc.createElementNS(ns, "svg");
+  svgEl.setAttribute("width", String(size));
+  svgEl.setAttribute("height", String(size));
+  svgEl.setAttribute("viewBox", "0 0 16 16");
+  svgEl.setAttribute("fill", "none");
+  svgEl.setAttribute("stroke", "currentColor");
+  svgEl.setAttribute("stroke-width", "1.45");
+  svgEl.setAttribute("stroke-linecap", "round");
+  svgEl.setAttribute("stroke-linejoin", "round");
+  svgEl.setAttribute("aria-hidden", "true");
+  svgEl.setAttribute("class", "fc-ui-svg fc-ui-svg-" + kind);
+
+  const add = (tag, attrs) => {
+    const el = doc.createElementNS(ns, tag);
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, String(v));
+    svgEl.append(el);
+    return el;
+  };
+
+  if (kind === "obsidian") {
+    add("path", { d: "M8 2.8L3.4 9.5L8 12.8L12.6 9.5Z" });
+    add("circle", { cx: 8, cy: 2.8, r: 1.4, fill: "currentColor", stroke: "none" });
+    add("circle", { cx: 3.4, cy: 9.5, r: 1.4, fill: "currentColor", stroke: "none" });
+    add("circle", { cx: 12.6, cy: 9.5, r: 1.4, fill: "currentColor", stroke: "none" });
+    add("circle", { cx: 8, cy: 12.8, r: 1.3, fill: "currentColor", stroke: "none" });
+  } else if (kind === "roadmap") {
+    add("line", { x1: 2, y1: 8, x2: 14, y2: 8 });
+    add("line", { x1: 4.5, y1: 3.2, x2: 4.5, y2: 12.8, "stroke-opacity": "0.45" });
+    add("line", { x1: 11.5, y1: 3.2, x2: 11.5, y2: 12.8, "stroke-opacity": "0.45" });
+    add("circle", { cx: 4.5, cy: 8, r: 1.8, fill: "currentColor", stroke: "none" });
+    add("circle", { cx: 8.2, cy: 5.2, r: 1.4, fill: "currentColor", stroke: "none" });
+    add("circle", { cx: 11.5, cy: 8, r: 1.8, fill: "currentColor", stroke: "none" });
+  } else if (kind === "zones") {
+    add("rect", { x: 2.2, y: 2.4, width: 5.1, height: 5.1, rx: 1.3 });
+    add("rect", { x: 8.7, y: 2.4, width: 5.1, height: 5.1, rx: 1.3 });
+    add("rect", { x: 2.2, y: 8.7, width: 5.1, height: 5.1, rx: 1.3 });
+    add("rect", { x: 8.7, y: 8.7, width: 5.1, height: 5.1, rx: 1.3 });
+  } else if (kind === "gantt") {
+    add("rect", { x: 2.2, y: 2.8, width: 6.5, height: 2.2, rx: 1, fill: "currentColor", stroke: "none" });
+    add("rect", { x: 5.4, y: 6.9, width: 7.4, height: 2.2, rx: 1, fill: "currentColor", stroke: "none" });
+    add("rect", { x: 7.8, y: 11, width: 6, height: 2.2, rx: 1, fill: "currentColor", stroke: "none" });
+    add("line", { x1: 10.2, y1: 1.8, x2: 10.2, y2: 14.2, "stroke-dasharray": "1.6 1.6" });
+  } else if (kind === "cycle") {
+    add("path", { d: "M12.8 5.2A5.2 5.2 0 0 0 3.7 5.2M3.2 10.8A5.2 5.2 0 0 0 12.3 10.8" });
+    add("polyline", { points: "11.2 2.7 13.1 5.3 10.4 5.7" });
+    add("polyline", { points: "4.8 13.3 2.9 10.7 5.6 10.3" });
+  } else if (kind === "filters") {
+    add("line", { x1: 2.5, y1: 4.5, x2: 13.5, y2: 4.5 });
+    add("line", { x1: 4.5, y1: 8, x2: 11.5, y2: 8 });
+    add("line", { x1: 6.5, y1: 11.5, x2: 9.5, y2: 11.5 });
+  } else if (kind === "list") {
+    add("line", { x1: 5.2, y1: 4.2, x2: 13.2, y2: 4.2 });
+    add("line", { x1: 5.2, y1: 8, x2: 13.2, y2: 8 });
+    add("line", { x1: 5.2, y1: 11.8, x2: 13.2, y2: 11.8 });
+    add("circle", { cx: 2.8, cy: 4.2, r: 0.9, fill: "currentColor", stroke: "none" });
+    add("circle", { cx: 2.8, cy: 8, r: 0.9, fill: "currentColor", stroke: "none" });
+    add("circle", { cx: 2.8, cy: 11.8, r: 0.9, fill: "currentColor", stroke: "none" });
+  } else if (kind === "refresh") {
+    add("path", { d: "M13 8a5 5 0 1 1-1.35-3.42" });
+    add("polyline", { points: "13 2.4 13 5.2 10.2 5.2" });
+  } else if (kind === "search") {
+    add("circle", { cx: 7.1, cy: 7.1, r: 4.2 });
+    add("line", { x1: 10.2, y1: 10.2, x2: 13.6, y2: 13.6 });
+  } else if (kind === "open") {
+    add("line", { x1: 4.5, y1: 11.5, x2: 11.5, y2: 4.5 });
+    add("polyline", { points: "6 4.5 11.5 4.5 11.5 10" });
+  } else if (kind === "wrap") {
+    add("path", { d: "M2.5 4.5h11M2.5 8h8.2a2.1 2.1 0 0 1 0 4.2H8" });
+    add("polyline", { points: "9.5 10.6 7.8 12.2 9.5 13.8" });
+  } else if (kind === "copy") {
+    add("rect", { x: 5.5, y: 5.5, width: 7.5, height: 8, rx: 1.2 });
+    add("path", { d: "M4.5 10.5H3.8A1.3 1.3 0 0 1 2.5 9.2V3.8A1.3 1.3 0 0 1 3.8 2.5H9.2A1.3 1.3 0 0 1 10.5 3.8V4.5" });
+  }
+  return svgEl;
+}
+
+function extractObsidianDateTimeline(file, fm = null, primaryDate = null) {
+  const milestones = [];
+  const seenIso = new Set();
+  const pushDate = (parsed, source) => {
+    if (!parsed || !parsed.iso || seenIso.has(parsed.iso)) return;
+    seenIso.add(parsed.iso);
+    milestones.push({ ms: parsed.ms, iso: parsed.iso, ym: parsed.ym, label: parsed.label, source });
+  };
+  if (primaryDate && primaryDate.field !== "mtime") pushDate(primaryDate, primaryDate.source || "Дата");
+  if (fm && typeof fm === "object") {
+    for (const [key, prefix] of FC_DATE_FM_PRIORITY) {
+      const val = fm[key] ?? fm[`"${key}"`];
+      const parsed = parseFlexibleFcDate(val);
+      if (parsed) pushDate(parsed, prefix);
+    }
+    for (const [k, v] of Object.entries(fm)) {
+      if (/date|дата|start|end|deadline|заповнив|завершив|почав|знайшов/i.test(k)) {
+        const parsed = parseFlexibleFcDate(v);
+        if (parsed) pushDate(parsed, k.replace(/^["']|["']$/g, ""));
+      }
+    }
+  }
+  const titleParsed = parseFlexibleFcDate(file?.basename || file?.path || "");
+  if (titleParsed) pushDate(titleParsed, "Назва");
+  milestones.sort((a, b) => a.ms - b.ms);
+  const explicit = milestones.length > 0;
+  const fallbackMs = primaryDate?.ms || null;
+  const startMs = milestones[0]?.ms ?? fallbackMs;
+  const endMs = milestones.length > 1 ? milestones[milestones.length - 1].ms : startMs;
+  const spanDays = startMs && endMs ? Math.max(1, Math.round((endMs - startMs) / 86_400_000) + 1) : 1;
+  return {
+    startMs,
+    endMs,
+    spanDays,
+    hasExplicitDate: explicit,
+    milestones: milestones.slice(0, 8),
+    year: startMs ? new Date(startMs).getUTCFullYear() : null,
+  };
+}
+
+function extractObsidianProjectMeta(filePath, fm = null) {
+  const p = String(filePath || "");
+  const explicitProject = fm ? fcFmText(fm, ["project", "проєкт", "проект", "напрям"]) : "";
+  if (explicitProject) {
+    return { projectKey: "proj:" + explicitProject.toLowerCase(), projectLabel: explicitProject };
+  }
+  const streamNum = fm ? fcFmText(fm, ["номер потоку", "потік", "stream"]) : "";
+  if (/^[1-9]$/.test(streamNum)) {
+    return { projectKey: `stream:${streamNum}`, projectLabel: `${streamNum} Потік навчання` };
+  }
+  if (/01_01 projects-fundraising\//iu.test(p)) return { projectKey: "proj:fundraising", projectLabel: "Фандрейзинг і гранти" };
+  if (/01_02 projects-production\//iu.test(p)) return { projectKey: "proj:production", projectLabel: "Медіа-продакшн" };
+  if (/01_03 projects-події\/|01_01 події\/|01_03_01 події\//iu.test(p)) return { projectKey: "proj:events", projectLabel: "Події та івенти" };
+  if (/01_03 Профілі курсантів\/|Курсанти - профілі\//iu.test(p)) return { projectKey: "proj:cadets", projectLabel: "Профілі курсантів" };
+  if (/01_02 Потоки навчань\//iu.test(p)) return { projectKey: "proj:streams", projectLabel: "Потоки навчань" };
+  if (/FlightClub Platform\/Майно\//iu.test(p)) return { projectKey: "proj:equipment", projectLabel: "Бібліотека майна" };
+  if (/FlightClub Platform\/Люди\//iu.test(p)) return { projectKey: "proj:people", projectLabel: "Учасники платформи" };
+  if (/FlightClub Platform\/Події\//iu.test(p)) return { projectKey: "proj:platform-events", projectLabel: "Події платформи" };
+  if (/Daily\/|03_01 - daily/iu.test(p)) return { projectKey: "proj:daily", projectLabel: "Daily та сінки" };
+  if (/05 sop\//iu.test(p)) return { projectKey: "proj:sop", projectLabel: "SOP і регламенти" };
+  if (/02 копірайти\//iu.test(p)) return { projectKey: "proj:copywrite", projectLabel: "Копірайти" };
+  if (/02 МЕДІА\/|03 media\//iu.test(p)) return { projectKey: "proj:media", projectLabel: "Медіа та соцмережі" };
+  const parts = p.split("/").filter(Boolean);
+  const folder = parts.length >= 2 ? parts[parts.length - 2] : "База Vault";
+  return { projectKey: "folder:" + folder.toLowerCase(), projectLabel: folder };
+}
+
 function extractObsidianNoteTags(file, fm = null, cache = null, includeDerived = true) {
   const out = new Set();
   const addTag = (raw) => {
@@ -888,13 +1042,14 @@ function stepObsidianForcePhysics(sim, alpha = 0.25) {
   const { nodes, edges, zoneCenters, physicsLayout = "obsidian", forces = {} } = sim;
   const nLen = nodes.length;
   if (!nLen) return;
-  const isFree = physicsLayout !== "zones";
+  const isRoadmap = physicsLayout === "roadmap";
+  const isFree = physicsLayout === "obsidian";
   const fCenter = Number.isFinite(forces.center) ? forces.center : 0.45;
   const fRepel = Number.isFinite(forces.repel) ? forces.repel : 1.0;
   const fLink = Number.isFinite(forces.link) ? forces.link : 1.0;
   const fDist = Number.isFinite(forces.distance) ? forces.distance : 85;
 
-  // 1. Gravity (Obsidian free radial cluster pull vs zone-boxed constellation anchors)
+  // 1. Gravity (Obsidian free radial cluster pull | Roadmap chronological X + swim-lane Y | Zone-boxed constellation anchors)
   for (let i = 0; i < nLen; i++) {
     const n = nodes[i];
     if (n.fx != null && n.fy != null) {
@@ -904,7 +1059,14 @@ function stepObsidianForcePhysics(sim, alpha = 0.25) {
       n.vy = 0;
       continue;
     }
-    if (isFree) {
+    if (isRoadmap) {
+      if (Number.isFinite(n.roadmapX)) {
+        n.vx += (n.roadmapX - n.x) * (0.28 + fCenter * 0.16) * alpha;
+      }
+      if (Number.isFinite(n.roadmapY)) {
+        n.vy += (n.roadmapY - n.y) * (0.075 + fCenter * 0.04) * alpha;
+      }
+    } else if (isFree) {
       n.vx += (0 - n.x) * 0.018 * fCenter * alpha;
       n.vy += (0 - n.y) * 0.018 * fCenter * alpha;
       const zc = zoneCenters.get(n.zoneId);
@@ -931,7 +1093,7 @@ function stepObsidianForcePhysics(sim, alpha = 0.25) {
   }
 
   // 2. O(N) spatial-hash Coulomb repulsion + collision separation (bounded neighbors per node for 60fps)
-  const cellSize = isFree ? 128 : 104;
+  const cellSize = isRoadmap ? 112 : isFree ? 128 : 104;
   const grid = new Map();
   for (let i = 0; i < nLen; i++) {
     const n = nodes[i];
@@ -942,18 +1104,18 @@ function stepObsidianForcePhysics(sim, alpha = 0.25) {
     if (!bucket) { bucket = []; grid.set(key, bucket); }
     bucket.push(i);
   }
-  const maxDistSq = isFree ? 28000 : 22000;
+  const maxDistSq = isFree ? 28000 : isRoadmap ? 22000 : 22000;
   for (let i = 0; i < nLen; i++) {
     const a = nodes[i];
     const gx = Math.floor(a.x / cellSize);
     const gy = Math.floor(a.y / cellSize);
     const rA = a.visualR || a.r || 5;
     let checks = 0;
-    for (let dx = -1; dx <= 1 && checks < 24; dx++) {
-      for (let dy = -1; dy <= 1 && checks < 24; dy++) {
+    for (let dx = -1; dx <= 1 && checks < 22; dx++) {
+      for (let dy = -1; dy <= 1 && checks < 22; dy++) {
         const bucket = grid.get(`${gx + dx},${gy + dy}`);
         if (!bucket) continue;
-        for (let k = 0; k < bucket.length && checks < 24; k++) {
+        for (let k = 0; k < bucket.length && checks < 22; k++) {
           const j = bucket[k];
           if (j <= i) continue;
           checks++;
@@ -974,53 +1136,63 @@ function stepObsidianForcePhysics(sim, alpha = 0.25) {
             : bothOrphans
               ? (sameZone ? 260 : 480)
               : (sameZone ? 660 : 780);
-          const charge = baseCharge * (isFree ? fRepel : 1);
+          const charge = baseCharge * (isFree ? fRepel : isRoadmap ? fRepel * 0.78 : 1);
           const dist = Math.sqrt(distSq);
-          const minDist = rA + (b.visualR || b.r || 5) + (isFree ? 16 : 14);
+          const minDist = rA + (b.visualR || b.r || 5) + (isFree ? 16 : isRoadmap ? 15 : 14);
           const overlapBoost = dist < minDist ? ((minDist - dist) / minDist) * 2.2 : 0;
           const f = ((charge / (distSq + 55)) + overlapBoost) * alpha;
           const fx = (rx / dist) * f;
           const fy = (ry / dist) * f;
-          if (a.fx == null) { a.vx -= fx; a.vy -= fy; }
-          if (b.fx == null) { b.vx += fx; b.vy += fy; }
+          const rxScale = isRoadmap ? 0.42 : 1;
+          if (a.fx == null) { a.vx -= fx * rxScale; a.vy -= fy; }
+          if (b.fx == null) { b.vx += fx * rxScale; b.vy += fy; }
         }
       }
     }
   }
 
-  // 3. Hooke's law spring attraction along ALL edges in Obsidian free-force mode (or intra-zone in boxed mode)
+  // 3. Hooke's law spring attraction along edges
   for (let i = 0; i < edges.length; i++) {
     const e = edges[i];
     const a = e.sourceNode;
     const b = e.targetNode;
     if (!a || !b) continue;
     const cross = a.zoneId !== b.zoneId;
-    if (!isFree && cross) continue;
+    if (!isFree && !isRoadmap && cross) continue;
     const dx = b.x - a.x;
     const dy = b.y - a.y;
     const dist = Math.sqrt(dx * dx + dy * dy) || 1;
     const rest = isFree
       ? (a.visualR || a.r || 5) + (b.visualR || b.r || 5) + fDist * (e.type === "tag" ? 0.62 : cross ? 0.92 : 0.72)
-      : (a.visualR || a.r || 5) + (b.visualR || b.r || 5) + (e.type === "tag" ? 38 : 30);
+      : isRoadmap
+        ? (a.visualR || a.r || 5) + (b.visualR || b.r || 5) + fDist * 0.9
+        : (a.visualR || a.r || 5) + (b.visualR || b.r || 5) + (e.type === "tag" ? 38 : 30);
     const k = isFree
       ? (e.type === "tag" ? 0.048 : cross ? 0.042 : 0.062) * fLink
-      : (e.type === "tag" ? 0.042 : 0.068);
+      : isRoadmap
+        ? 0.018 * fLink
+        : (e.type === "tag" ? 0.042 : 0.068);
     const force = (dist - rest) * k * alpha;
     const fx = (dx / dist) * force;
     const fy = (dy / dist) * force;
-    if (a.fx == null) { a.vx += fx; a.vy += fy; }
-    if (b.fx == null) { b.vx -= fx; b.vy -= fy; }
+    const exScale = isRoadmap ? 0.35 : 1;
+    if (a.fx == null) { a.vx += fx * exScale; a.vy += fy; }
+    if (b.fx == null) { b.vx -= fx * exScale; b.vy -= fy; }
   }
 
   // 4. Integrate velocities with smooth damping
-  const damp = isFree ? 0.78 : 0.74;
+  const damp = isFree ? 0.78 : isRoadmap ? 0.72 : 0.74;
   const maxSpeed = isFree ? 28 : 26;
   for (let i = 0; i < nLen; i++) {
     const n = nodes[i];
     if (n.fx != null && n.fy != null) continue;
     const pad = (n.visualR || n.r || 6) + 18;
+    if (isRoadmap && Number.isFinite(n.laneTop) && Number.isFinite(n.laneBot)) {
+      if (n.y < n.laneTop + pad) n.vy += (n.laneTop + pad - n.y) * 0.25 * alpha;
+      else if (n.y > n.laneBot - pad) n.vy -= (n.y - (n.laneBot - pad)) * 0.25 * alpha;
+    }
     const zc = zoneCenters.get(n.zoneId);
-    if (!isFree && zc) {
+    if (!isFree && !isRoadmap && zc) {
       const limX = Math.max(40, zc.rx - pad);
       const topLim = Math.max(20, zc.ry - (pad + 26));
       const botLim = Math.max(40, zc.ry - pad);
@@ -1040,7 +1212,7 @@ function stepObsidianForcePhysics(sim, alpha = 0.25) {
     }
     n.x += n.vx;
     n.y += n.vy;
-    if (!isFree && zc) {
+    if (!isFree && !isRoadmap && zc) {
       const left = zc.x - zc.minRx + pad;
       const right = zc.x + zc.minRx - pad;
       const top = zc.y - zc.minRy + pad + 24;
@@ -1051,16 +1223,26 @@ function stepObsidianForcePhysics(sim, alpha = 0.25) {
       if (y !== n.y) n.vy = 0;
       n.x = x;
       n.y = y;
+    } else if (isRoadmap && Number.isFinite(n.laneTop) && Number.isFinite(n.laneBot)) {
+      const yClamp = Math.max(n.laneTop + 14, Math.min(n.laneBot - 14, n.y));
+      if (yClamp !== n.y) n.vy = 0;
+      n.y = yClamp;
     }
   }
 }
 
 function recomputeObsidianZoneHulls(zones, byZone, positions, zoneCenters, physicsLayout = "obsidian") {
-  const isFree = physicsLayout !== "zones";
+  const isFree = physicsLayout === "obsidian";
+  const isRoadmap = physicsLayout === "roadmap";
   for (const z of zones) {
     const members = byZone.get(z.id) || [];
     for (const n of members) {
       positions.set(n.id, { x: n.x, y: n.y });
+    }
+    if (isRoadmap) {
+      const zc = zoneCenters?.get(z.id);
+      if (zc) { z.x = zc.x; z.y = zc.y; z.rx = zc.rx; z.ry = zc.ry; }
+      continue;
     }
     const zc = zoneCenters?.get(z.id);
     if (!members.length) continue;
@@ -1098,12 +1280,206 @@ function recomputeObsidianZoneHulls(zones, byZone, positions, zoneCenters, physi
   }
 }
 
+const SHORT_MONTHS_UK = ["Січ", "Лют", "Бер", "Кві", "Тра", "Чер", "Лип", "Сер", "Вер", "Жов", "Лис", "Гру"];
+
+function computeObsidianRoadmapLayout(nodes, edges, activeZones, byZone) {
+  const datedNodes = [];
+  const undatedNodes = [];
+  const edgePeers = new Map();
+  for (const e of edges) {
+    if (!edgePeers.has(e.sourceNode.id)) edgePeers.set(e.sourceNode.id, []);
+    if (!edgePeers.has(e.targetNode.id)) edgePeers.set(e.targetNode.id, []);
+    edgePeers.get(e.sourceNode.id).push(e.targetNode);
+    edgePeers.get(e.targetNode.id).push(e.sourceNode);
+  }
+
+  for (const n of nodes) {
+    const ms = Number.isFinite(n.startMs) ? n.startMs : (n.dateInfo?.ms ?? null);
+    if (Number.isFinite(ms)) {
+      const d = new Date(ms);
+      const y = d.getUTCFullYear();
+      const m = d.getUTCMonth() + 1;
+      const day = d.getUTCDate();
+      const ym = `${y}-${String(m).padStart(2, "0")}`;
+      datedNodes.push({ n, ms, y, m, day, ym });
+    } else if (n.kind === "tag") {
+      const neighborMs = (edgePeers.get(n.id) || [])
+        .map((p) => (Number.isFinite(p.startMs) ? p.startMs : p.dateInfo?.ms))
+        .filter((v) => Number.isFinite(v))
+        .sort((a, b) => a - b);
+      if (neighborMs.length) {
+        const med = neighborMs[Math.floor(neighborMs.length / 2)];
+        const d = new Date(med);
+        const y = d.getUTCFullYear();
+        const m = d.getUTCMonth() + 1;
+        datedNodes.push({ n, ms: med, y, m, day: d.getUTCDate(), ym: `${y}-${String(m).padStart(2, "0")}` });
+      } else {
+        undatedNodes.push(n);
+      }
+    } else {
+      undatedNodes.push(n);
+    }
+  }
+
+  const monthMap = new Map();
+  for (const item of datedNodes) {
+    let bucket = monthMap.get(item.ym);
+    if (!bucket) {
+      bucket = { ym: item.ym, year: item.y, month: item.m, items: [] };
+      monthMap.set(item.ym, bucket);
+    }
+    bucket.items.push(item);
+  }
+
+  const currentYear = new Date().getUTCFullYear();
+  const months = [...monthMap.values()].sort((a, b) => a.ym.localeCompare(b.ym));
+  let cursorX = 0;
+  let lastYear = null;
+  const yearCheckpoints = [];
+  const monthTicks = [];
+
+  for (const bucket of months) {
+    if (lastYear !== null && bucket.year !== lastYear) {
+      cursorX += 86;
+    }
+    const width = Math.max(116, Math.min(310, 74 + Math.sqrt(bucket.items.length) * 34));
+    const startX = cursorX;
+    const endX = startX + width;
+
+    if (lastYear === null || bucket.year !== lastYear) {
+      yearCheckpoints.push({
+        year: bucket.year,
+        x: startX,
+        endX,
+        count: 0,
+        isCurrentYear: bucket.year === currentYear,
+      });
+    }
+    const curCp = yearCheckpoints[yearCheckpoints.length - 1];
+    curCp.endX = endX;
+    curCp.count += bucket.items.length;
+
+    monthTicks.push({
+      ym: bucket.ym,
+      year: bucket.year,
+      month: bucket.month,
+      label: SHORT_MONTHS_UK[bucket.month - 1] || String(bucket.month),
+      x: startX,
+      endX,
+      midX: startX + width / 2,
+      count: bucket.items.length,
+    });
+
+    bucket.startX = startX;
+    bucket.width = width;
+    for (const item of bucket.items) {
+      const frac = Math.max(0.06, Math.min(0.94, (item.day - 1) / 30));
+      item.rawX = startX + frac * width;
+    }
+
+    cursorX = endX + 18;
+    lastYear = bucket.year;
+  }
+
+  const timelineSpan = Math.max(200, cursorX);
+  const shiftX = timelineSpan / 2;
+  for (const cp of yearCheckpoints) { cp.x -= shiftX; cp.endX -= shiftX; }
+  for (const mt of monthTicks) { mt.x -= shiftX; mt.endX -= shiftX; mt.midX -= shiftX; }
+  for (const item of datedNodes) {
+    item.n.roadmapX = item.rawX - shiftX;
+  }
+
+  const hasTimeline = monthTicks.length > 0;
+  const minTimelineX = hasTimeline ? yearCheckpoints[0].x : -180;
+  const maxTimelineX = hasTimeline ? monthTicks[monthTicks.length - 1].endX : 180;
+  const noDateX = undatedNodes.length ? minTimelineX - 170 : null;
+  undatedNodes.forEach((n, idx) => {
+    n.roadmapX = (noDateX ?? 0) + ((idx % 5) - 2) * 22;
+  });
+
+  const now = new Date();
+  const todayYm = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+  const exactTodayTick = monthTicks.find((m) => m.ym === todayYm);
+  let todayX = null;
+  if (exactTodayTick) {
+    todayX = exactTodayTick.x + Math.max(0.08, Math.min(0.92, (now.getUTCDate() - 1) / 30)) * (exactTodayTick.endX - exactTodayTick.x);
+  } else if (hasTimeline) {
+    todayX = maxTimelineX + 42;
+  }
+
+  const lanes = [];
+  let accY = 0;
+  const laneGap = 24;
+  for (const z of activeZones) {
+    const members = byZone.get(z.id) || [];
+    const h = Math.max(114, Math.min(340, 74 + Math.sqrt(members.length) * 30));
+    const topY = accY;
+    const botY = accY + h;
+    lanes.push({
+      id: z.id,
+      label: z.label,
+      icon: z.icon,
+      color: z.color,
+      count: members.filter((m) => m.kind !== "tag").length,
+      topY,
+      botY,
+      y: topY + h / 2,
+      height: h,
+    });
+    accY = botY + laneGap;
+  }
+  const totalH = Math.max(120, accY - laneGap);
+  const shiftY = totalH / 2;
+  const laneByZone = new Map();
+  for (const lane of lanes) {
+    lane.topY -= shiftY;
+    lane.botY -= shiftY;
+    lane.y -= shiftY;
+    laneByZone.set(lane.id, lane);
+  }
+
+  const counters = new Map();
+  for (const n of nodes) {
+    const lane = laneByZone.get(n.zoneId);
+    if (!lane) continue;
+    const seq = counters.get(lane.id) || 0;
+    counters.set(lane.id, seq + 1);
+    const band = Math.max(24, lane.height * 0.34);
+    const offset = (((seq * 29) % 19) / 18 - 0.5) * 2 * band;
+    n.roadmapY = lane.y + offset;
+    n.laneTop = lane.topY;
+    n.laneBot = lane.botY;
+    n.laneY = lane.y;
+  }
+
+  const minX = (noDateX != null ? noDateX - 80 : minTimelineX) - 60;
+  const maxX = Math.max(maxTimelineX, todayX ?? maxTimelineX) + 80;
+  const minY = (lanes[0]?.topY ?? -120) - 72;
+  const maxY = (lanes[lanes.length - 1]?.botY ?? 120) + 48;
+
+  return {
+    yearCheckpoints,
+    monthTicks,
+    lanes,
+    todayX,
+    noDateX,
+    axisY: minY + 34,
+    minX,
+    maxX,
+    minY,
+    maxY,
+  };
+}
+
 function layoutObsidianZoneGraph(nodes, edges, mode = "domains", skipPhysics = false, customZones = null, layoutOpts = {}) {
   const baseCat = FC_GRAPH_CATEGORIZATIONS[mode] || FC_GRAPH_CATEGORIZATIONS.domains;
   const cat = Array.isArray(customZones) && customZones.length
     ? { ...baseCat, zones: customZones }
     : baseCat;
-  const physicsLayout = layoutOpts.physicsLayout === "zones" ? "zones" : "obsidian";
+  const physicsLayout = GRAPH_LAYOUT_ORDER.includes(layoutOpts.physicsLayout)
+    ? layoutOpts.physicsLayout
+    : "obsidian";
+  const prevPositions = layoutOpts.prevPositions instanceof Map ? layoutOpts.prevPositions : null;
   const forces = {
     center: Number.isFinite(layoutOpts.forces?.center) ? layoutOpts.forces.center : 0.45,
     repel: Number.isFinite(layoutOpts.forces?.repel) ? layoutOpts.forces.repel : 1.0,
@@ -1146,126 +1522,173 @@ function layoutObsidianZoneGraph(nodes, edges, mode = "domains", skipPhysics = f
     byZone.get(zid).push(n);
   }
   const activeZones = cat.zones.filter((z) => (byZone.get(z.id)?.length || 0) > 0);
-  if (skipPhysics) {
+  if (skipPhysics || physicsLayout === "gantt") {
     for (const members of byZone.values()) {
       members.sort((a, b) => b.degree - a.degree || a.title.localeCompare(b.title, "uk"));
     }
-    return { mode: cat.id, category: cat, nodes, edges: validEdges, zones: activeZones, byZone, physicsLayout, forces };
+    const zonesSummary = activeZones.map((z) => ({
+      ...z,
+      count: (byZone.get(z.id) || []).filter((m) => m.kind !== "tag").length,
+      x: 0,
+      y: 0,
+      rx: 120,
+      ry: 80,
+    }));
+    return { mode: cat.id, category: cat, nodes, edges: validEdges, zones: zonesSummary, byZone, physicsLayout, forces };
   }
+
   const positions = new Map();
   const zones = [];
   const zoneCenters = new Map();
-  const count = Math.max(1, activeZones.length);
   const GOLDEN_ANGLE = 2.39996322972865332;
+  let roadmapMeta = null;
 
-  const plans = activeZones.map((z) => {
-    const members = byZone.get(z.id).sort((a, b) => (b.kind === "tag") - (a.kind === "tag") || b.degree - a.degree || a.title.localeCompare(b.title, "uk"));
-    const connected = members.filter((m) => !m.isOrphan);
-    const orphans = members.filter((m) => m.isOrphan);
-    const coreOffsetY = physicsLayout === "zones" ? 14 : 0;
-    const coreSpread = connected.length
-      ? (connected.length === 1 ? 28 : 26 * Math.sqrt(connected.length) + 22)
-      : 0;
-    const ringStart = connected.length ? coreSpread + 28 : 0;
-    const orphanArea = orphans.some(m => m.entityKind === "person" || m.entityKind === "item" || m.entityKind === "event") ? 1380 : 980;
-    const outerRadius = orphans.length
-      ? (connected.length
-          ? Math.sqrt(ringStart * ringStart + orphans.length * orphanArea)
-          : (orphans.length === 1 ? 26 : 26 * Math.sqrt(orphans.length) + 18))
-      : coreSpread;
-    const rx = Math.max(128, Math.ceil(outerRadius + 40));
-    const ry = Math.max(106, Math.ceil(outerRadius + 48));
-    return { z, members, connected, orphans, coreOffsetY, coreSpread, ringStart, orphanArea, rx, ry, cx: 0, cy: 0 };
-  });
+  if (physicsLayout === "roadmap") {
+    roadmapMeta = computeObsidianRoadmapLayout(nodes, validEdges, activeZones, byZone);
+    const spanX = Math.max(240, roadmapMeta.maxX - roadmapMeta.minX);
+    for (const lane of roadmapMeta.lanes) {
+      const zObj = activeZones.find((z) => z.id === lane.id);
+      if (!zObj) continue;
+      const rx = spanX / 2;
+      const ry = lane.height / 2;
+      const cx = (roadmapMeta.minX + roadmapMeta.maxX) / 2;
+      zoneCenters.set(zObj.id, { x: cx, y: lane.y, coreOffsetY: 0, rx, ry, minRx: rx, minRy: ry });
+      zones.push({ ...zObj, count: lane.count, x: cx, y: lane.y, rx, ry });
+    }
+    for (const n of nodes) {
+      const zColor = zoneCenters.has(n.zoneId)
+        ? (activeZones.find((z) => z.id === n.zoneId)?.color || "#94a3b8")
+        : "#94a3b8";
+      n.color = zColor;
+      const tx = Number.isFinite(n.roadmapX) ? n.roadmapX : 0;
+      const ty = Number.isFinite(n.roadmapY) ? n.roadmapY : 0;
+      const prev = prevPositions?.get(n.id);
+      if (prev && Number.isFinite(prev.x) && Number.isFinite(prev.y)) {
+        n.x = prev.x * 0.55 + tx * 0.45;
+        n.y = prev.y * 0.55 + ty * 0.45;
+      } else {
+        n.x = tx;
+        n.y = ty;
+      }
+      n.vx = 0;
+      n.vy = 0;
+    }
+  } else {
+    const count = Math.max(1, activeZones.length);
+    const plans = activeZones.map((z) => {
+      const members = byZone.get(z.id).sort((a, b) => (b.kind === "tag") - (a.kind === "tag") || b.degree - a.degree || a.title.localeCompare(b.title, "uk"));
+      const connected = members.filter((m) => !m.isOrphan);
+      const orphans = members.filter((m) => m.isOrphan);
+      const coreOffsetY = physicsLayout === "zones" ? 14 : 0;
+      const coreSpread = connected.length
+        ? (connected.length === 1 ? 28 : 26 * Math.sqrt(connected.length) + 22)
+        : 0;
+      const ringStart = connected.length ? coreSpread + 28 : 0;
+      const orphanArea = orphans.some(m => m.entityKind === "person" || m.entityKind === "item" || m.entityKind === "event") ? 1380 : 980;
+      const outerRadius = orphans.length
+        ? (connected.length
+            ? Math.sqrt(ringStart * ringStart + orphans.length * orphanArea)
+            : (orphans.length === 1 ? 26 : 26 * Math.sqrt(orphans.length) + 18))
+        : coreSpread;
+      const rx = Math.max(128, Math.ceil(outerRadius + 40));
+      const ry = Math.max(106, Math.ceil(outerRadius + 48));
+      return { z, members, connected, orphans, coreOffsetY, coreSpread, ringStart, orphanArea, rx, ry, cx: 0, cy: 0 };
+    });
 
-  if (physicsLayout === "zones") {
-    const gridCols = count <= 2 ? count : count <= 4 ? 2 : count <= 6 ? 3 : 4;
-    const gridRows = Math.ceil(count / gridCols);
-    const colWidths = Array(gridCols).fill(0);
-    const rowHeights = Array(gridRows).fill(0);
-    plans.forEach((p, idx) => {
-      const c = idx % gridCols;
-      const r = Math.floor(idx / gridCols);
-      colWidths[c] = Math.max(colWidths[c], p.rx * 2);
-      rowHeights[r] = Math.max(rowHeights[r], p.ry * 2);
-    });
-    const gap = 72;
-    const colX = [];
-    let accX = 0;
-    for (let c = 0; c < gridCols; c++) { colX[c] = accX + colWidths[c] / 2; accX += colWidths[c] + gap; }
-    const rowY = [];
-    let accY = 0;
-    for (let r = 0; r < gridRows; r++) { rowY[r] = accY + rowHeights[r] / 2; accY += rowHeights[r] + gap; }
-    plans.forEach((p, idx) => {
-      p.cx = colX[idx % gridCols];
-      p.cy = rowY[Math.floor(idx / gridCols)];
-    });
-    for (let pass = 0; pass < 6; pass++) {
-      for (let i = 0; i < plans.length; i++) {
-        for (let j = i + 1; j < plans.length; j++) {
-          const a = plans[i], b = plans[j];
-          const minDx = a.rx + b.rx + 56;
-          const minDy = a.ry + b.ry + 56;
-          const dx = b.cx - a.cx;
-          const dy = b.cy - a.cy;
-          const ox = minDx - Math.abs(dx);
-          const oy = minDy - Math.abs(dy);
-          if (ox > 0 && oy > 0) {
-            if (ox < oy) {
-              const push = (ox / 2) * (dx >= 0 ? 1 : -1);
-              a.cx -= push; b.cx += push;
-            } else {
-              const push = (oy / 2) * (dy >= 0 ? 1 : -1);
-              a.cy -= push; b.cy += push;
+    if (physicsLayout === "zones") {
+      const gridCols = count <= 2 ? count : count <= 4 ? 2 : count <= 6 ? 3 : 4;
+      const gridRows = Math.ceil(count / gridCols);
+      const colWidths = Array(gridCols).fill(0);
+      const rowHeights = Array(gridRows).fill(0);
+      plans.forEach((p, idx) => {
+        const c = idx % gridCols;
+        const r = Math.floor(idx / gridCols);
+        colWidths[c] = Math.max(colWidths[c], p.rx * 2);
+        rowHeights[r] = Math.max(rowHeights[r], p.ry * 2);
+      });
+      const gap = 72;
+      const colX = [];
+      let accX = 0;
+      for (let c = 0; c < gridCols; c++) { colX[c] = accX + colWidths[c] / 2; accX += colWidths[c] + gap; }
+      const rowY = [];
+      let accY = 0;
+      for (let r = 0; r < gridRows; r++) { rowY[r] = accY + rowHeights[r] / 2; accY += rowHeights[r] + gap; }
+      plans.forEach((p, idx) => {
+        p.cx = colX[idx % gridCols];
+        p.cy = rowY[Math.floor(idx / gridCols)];
+      });
+      for (let pass = 0; pass < 6; pass++) {
+        for (let i = 0; i < plans.length; i++) {
+          for (let j = i + 1; j < plans.length; j++) {
+            const a = plans[i], b = plans[j];
+            const minDx = a.rx + b.rx + 56;
+            const minDy = a.ry + b.ry + 56;
+            const dx = b.cx - a.cx;
+            const dy = b.cy - a.cy;
+            const ox = minDx - Math.abs(dx);
+            const oy = minDy - Math.abs(dy);
+            if (ox > 0 && oy > 0) {
+              if (ox < oy) {
+                const push = (ox / 2) * (dx >= 0 ? 1 : -1);
+                a.cx -= push; b.cx += push;
+              } else {
+                const push = (oy / 2) * (dy >= 0 ? 1 : -1);
+                a.cy -= push; b.cy += push;
+              }
             }
           }
         }
       }
+      const midX = plans.reduce((s, p) => s + p.cx, 0) / count;
+      const midY = plans.reduce((s, p) => s + p.cy, 0) / count;
+      plans.forEach((p) => { p.cx -= midX; p.cy -= midY; });
+    } else {
+      const orbitR = count === 1 ? 0 : Math.max(240, Math.sqrt(nodes.length) * 34);
+      plans.forEach((p, idx) => {
+        const ang = (idx / count) * Math.PI * 2 - Math.PI / 2;
+        p.cx = Math.cos(ang) * orbitR;
+        p.cy = Math.sin(ang) * orbitR;
+      });
     }
-    const midX = plans.reduce((s, p) => s + p.cx, 0) / count;
-    const midY = plans.reduce((s, p) => s + p.cy, 0) / count;
-    plans.forEach((p) => { p.cx -= midX; p.cy -= midY; });
-  } else {
-    // Organic Obsidian radial constellations arranged softly around (0, 0)
-    const orbitR = count === 1 ? 0 : Math.max(240, Math.sqrt(nodes.length) * 34);
+
     plans.forEach((p, idx) => {
-      const ang = (idx / count) * Math.PI * 2 - Math.PI / 2;
-      p.cx = Math.cos(ang) * orbitR;
-      p.cy = Math.sin(ang) * orbitR;
+      zoneCenters.set(p.z.id, { x: p.cx, y: p.cy, coreOffsetY: p.coreOffsetY, rx: p.rx, ry: p.ry, minRx: p.rx, minRy: p.ry });
+
+      p.connected.forEach((n, j) => {
+        n.color = p.z.color;
+        const theta = j * GOLDEN_ANGLE + (idx * 0.7);
+        const r = j === 0 ? 0 : (physicsLayout === "obsidian" ? 22 : 25) * Math.sqrt(j);
+        const tx = p.cx + Math.cos(theta) * r;
+        const ty = p.cy + p.coreOffsetY + Math.sin(theta) * r;
+        const prev = prevPositions?.get(n.id);
+        n.x = prev ? prev.x * 0.48 + tx * 0.52 : tx;
+        n.y = prev ? prev.y * 0.48 + ty * 0.52 : ty;
+        n.vx = 0;
+        n.vy = 0;
+      });
+
+      p.orphans.forEach((n, j) => {
+        n.color = p.z.color;
+        const theta = (j + p.connected.length) * GOLDEN_ANGLE + (idx * 0.7);
+        const r = p.connected.length
+          ? Math.sqrt(p.ringStart * p.ringStart + (j + 0.5) * p.orphanArea) * (physicsLayout === "obsidian" ? 0.88 : 1)
+          : (j === 0 ? 0 : 26 * Math.sqrt(j));
+        n.homeRelX = Math.cos(theta) * r;
+        n.homeRelY = p.coreOffsetY + Math.sin(theta) * r;
+        const tx = p.cx + n.homeRelX;
+        const ty = p.cy + n.homeRelY;
+        const prev = prevPositions?.get(n.id);
+        n.x = prev ? prev.x * 0.48 + tx * 0.52 : tx;
+        n.y = prev ? prev.y * 0.48 + ty * 0.52 : ty;
+        n.vx = 0;
+        n.vy = 0;
+      });
+
+      zones.push({ ...p.z, count: p.members.filter((m) => m.kind !== "tag").length, x: p.cx, y: p.cy, rx: p.rx, ry: p.ry });
     });
   }
 
-  plans.forEach((p, idx) => {
-    zoneCenters.set(p.z.id, { x: p.cx, y: p.cy, coreOffsetY: p.coreOffsetY, rx: p.rx, ry: p.ry, minRx: p.rx, minRy: p.ry });
-
-    p.connected.forEach((n, j) => {
-      n.color = p.z.color;
-      const theta = j * GOLDEN_ANGLE + (idx * 0.7);
-      const r = j === 0 ? 0 : (physicsLayout === "obsidian" ? 22 : 25) * Math.sqrt(j);
-      n.x = p.cx + Math.cos(theta) * r;
-      n.y = p.cy + p.coreOffsetY + Math.sin(theta) * r;
-      n.vx = 0;
-      n.vy = 0;
-    });
-
-    p.orphans.forEach((n, j) => {
-      n.color = p.z.color;
-      const theta = (j + p.connected.length) * GOLDEN_ANGLE + (idx * 0.7);
-      const r = p.connected.length
-        ? Math.sqrt(p.ringStart * p.ringStart + (j + 0.5) * p.orphanArea) * (physicsLayout === "obsidian" ? 0.88 : 1)
-        : (j === 0 ? 0 : 26 * Math.sqrt(j));
-      n.homeRelX = Math.cos(theta) * r;
-      n.homeRelY = p.coreOffsetY + Math.sin(theta) * r;
-      n.x = p.cx + n.homeRelX;
-      n.y = p.cy + n.homeRelY;
-      n.vx = 0;
-      n.vy = 0;
-    });
-
-    zones.push({ ...p.z, count: p.members.filter((m) => m.kind !== "tag").length, x: p.cx, y: p.cy, rx: p.rx, ry: p.ry });
-  });
-
-  // Fast 4-tick initial warm-up so opening the Graph is instantaneous (<15ms) and settles smoothly live
+  // Fast initial warm-up so switching views starts smoothly without UI lag
   const sim = { nodes, edges: validEdges, zoneCenters, zones, byZone, positions, physicsLayout, forces };
   const ticks = 4;
   for (let step = 0; step < ticks; step++) {
@@ -1281,12 +1704,13 @@ function layoutObsidianZoneGraph(nodes, edges, mode = "domains", skipPhysics = f
     forces,
     zones,
     zoneCenters,
+    roadmapMeta,
     byZone,
     nodes,
     edges: validEdges,
     positions,
     setPhysicsLayout: (nextLayout) => {
-      sim.physicsLayout = nextLayout === "zones" ? "zones" : "obsidian";
+      sim.physicsLayout = GRAPH_LAYOUT_ORDER.includes(nextLayout) ? nextLayout : "obsidian";
     },
     stepPhysics: (alpha = 0.2) => {
       stepObsidianForcePhysics(sim, alpha);
@@ -1434,6 +1858,157 @@ function fcDrawGraphClusterGlow(ctx, z, { isActive, isDim, isHeaderHovered }, th
     ctx.textBaseline = "middle";
     ctx.fillText(headerText, z.x, py + pillH / 2 + 0.5);
   }
+  ctx.restore();
+}
+
+function fcDrawGraphRoadmapBackdrop(ctx, roadmap, activeZone, theme, scale, tx, ty, stageW) {
+  if (!ctx || !roadmap) return;
+  const { yearCheckpoints = [], monthTicks = [], lanes = [], todayX, noDateX, axisY, minX, maxX, minY, maxY } = roadmap;
+  ctx.save();
+
+  // 1. Horizontal swim-lanes by active categorization
+  for (let i = 0; i < lanes.length; i++) {
+    const lane = lanes[i];
+    const isActive = Boolean(activeZone && lane.id === activeZone);
+    const isDim = Boolean(activeZone && lane.id !== activeZone);
+    ctx.save();
+    ctx.globalAlpha = isDim ? 0.16 : 1;
+    ctx.fillStyle = fcHexToRgba(lane.color, isActive ? 0.085 : i % 2 === 0 ? 0.032 : 0.015);
+    ctx.fillRect(minX, lane.topY, maxX - minX, lane.height);
+    ctx.beginPath();
+    ctx.moveTo(minX, lane.topY);
+    ctx.lineTo(maxX, lane.topY);
+    ctx.lineWidth = Math.max(0.7, 0.85 / Math.max(0.3, scale));
+    ctx.strokeStyle = fcHexToRgba(lane.color, isActive ? 0.42 : 0.14);
+    ctx.stroke();
+
+    // Sticky left lane pill locked just inside visible stage edge
+    const fontSize = Math.max(9.5, Math.min(13.5, 11 / Math.sqrt(Math.max(0.3, scale))));
+    ctx.font = `600 ${fontSize}px ${theme.fontFamily}`;
+    const labelText = `${lane.label} · ${lane.count}`;
+    const tw = ctx.measureText ? ctx.measureText(labelText).width : labelText.length * fontSize * 0.55;
+    const pw = Math.min(220, tw + 18);
+    const ph = Math.max(20, fontSize + 8);
+    const visibleLeftWx = (12 - tx) / Math.max(0.08, scale);
+    const px = Math.max(minX + 10, Math.min(maxX - pw - 10, visibleLeftWx));
+    const py = lane.topY + 8;
+    fcDrawRoundedRect(ctx, px, py, pw, ph, 999);
+    ctx.fillStyle = isActive ? fcHexToRgba(lane.color, 0.24) : theme.headerPillBg;
+    ctx.fill();
+    ctx.lineWidth = Math.max(0.7, 0.85 / Math.max(0.3, scale));
+    ctx.strokeStyle = fcHexToRgba(lane.color, isActive ? 0.72 : 0.34);
+    ctx.stroke();
+    ctx.fillStyle = theme.textNormal;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.fillText(labelText, px + 9, py + ph / 2 + 0.5);
+    ctx.restore();
+  }
+
+  // 2. Main horizontal chronological timeline spine near top
+  ctx.beginPath();
+  ctx.moveTo(minX + 16, axisY);
+  ctx.lineTo(maxX - 16, axisY);
+  ctx.lineWidth = Math.max(1.1, 1.4 / Math.max(0.3, scale));
+  ctx.strokeStyle = "rgba(148, 163, 184, 0.26)";
+  ctx.stroke();
+
+  // 3. Secondary month ticks
+  if (scale >= 0.24) {
+    const mFont = Math.max(9, Math.min(11.5, 10 / Math.sqrt(Math.max(0.35, scale))));
+    ctx.font = `500 ${mFont}px ${theme.fontFamily}`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    for (const mt of monthTicks) {
+      ctx.beginPath();
+      ctx.moveTo(mt.x, axisY - 5);
+      ctx.lineTo(mt.x, maxY - 12);
+      ctx.lineWidth = Math.max(0.55, 0.7 / Math.max(0.3, scale));
+      ctx.strokeStyle = "rgba(148, 163, 184, 0.08)";
+      ctx.stroke();
+
+      if (scale >= 0.42 || mt.count >= 6) {
+        ctx.fillStyle = "rgba(148, 163, 184, 0.72)";
+        ctx.fillText(mt.label, mt.midX, axisY + 13);
+      }
+    }
+  }
+
+  // 4. Prominent Year Checkpoints (vertical pillars + FlightClub year pills)
+  const yFont = Math.max(11, Math.min(17, 12.5 / Math.sqrt(Math.max(0.28, scale))));
+  for (const cp of yearCheckpoints) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(cp.x, axisY - 14);
+    ctx.lineTo(cp.x, maxY - 6);
+    ctx.lineWidth = Math.max(1.2, (cp.isCurrentYear ? 2.1 : 1.5) / Math.max(0.3, scale));
+    ctx.setLineDash?.([6 / Math.max(0.3, scale), 5 / Math.max(0.3, scale)]);
+    ctx.strokeStyle = cp.isCurrentYear ? "rgba(242, 61, 76, 0.45)" : "rgba(56, 189, 248, 0.34)";
+    ctx.stroke();
+    ctx.setLineDash?.([]);
+
+    ctx.font = `750 ${yFont}px ${theme.fontFamily}`;
+    const yText = `${cp.year} · ${cp.count}`;
+    const yw = (ctx.measureText ? ctx.measureText(yText).width : yText.length * yFont * 0.6) + 20;
+    const yh = Math.max(24, yFont + 10);
+    const yx = cp.x - 10;
+    const yy = axisY - yh - 8;
+    fcDrawRoundedRect(ctx, yx, yy, yw, yh, 999);
+    ctx.fillStyle = cp.isCurrentYear ? "rgba(227, 39, 58, 0.92)" : theme.headerPillBg;
+    ctx.fill();
+    ctx.lineWidth = Math.max(0.9, 1.1 / Math.max(0.3, scale));
+    ctx.strokeStyle = cp.isCurrentYear ? "#ff7b88" : "rgba(56, 189, 248, 0.55)";
+    ctx.stroke();
+
+    ctx.fillStyle = cp.isCurrentYear ? "#ffffff" : theme.textNormal;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(yText, yx + yw / 2, yy + yh / 2 + 0.5);
+    ctx.restore();
+  }
+
+  // 5. Undated evergreen anchor badge
+  if (Number.isFinite(noDateX)) {
+    const nFont = Math.max(10, Math.min(13, 10.5 / Math.sqrt(Math.max(0.3, scale))));
+    ctx.font = `600 ${nFont}px ${theme.fontFamily}`;
+    const label = "Постійна база";
+    const nw = (ctx.measureText ? ctx.measureText(label).width : 84) + 18;
+    const nh = Math.max(22, nFont + 8);
+    fcDrawRoundedRect(ctx, noDateX - nw / 2, axisY - nh - 8, nw, nh, 999);
+    ctx.fillStyle = theme.headerPillBg;
+    ctx.fill();
+    ctx.strokeStyle = "rgba(148, 163, 184, 0.3)";
+    ctx.lineWidth = 0.8 / Math.max(0.3, scale);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(148, 163, 184, 0.88)";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(label, noDateX, axisY - nh / 2 - 7.5);
+  }
+
+  // 6. Glowing crimson Today laser line
+  if (Number.isFinite(todayX)) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(todayX, axisY - 8);
+    ctx.lineTo(todayX, maxY - 6);
+    ctx.lineWidth = Math.max(1.2, 1.8 / Math.max(0.3, scale));
+    ctx.strokeStyle = "rgba(255, 85, 101, 0.72)";
+    ctx.stroke();
+    const tFont = Math.max(9.5, Math.min(12.5, 10 / Math.sqrt(Math.max(0.3, scale))));
+    ctx.font = `700 ${tFont}px ${theme.fontFamily}`;
+    const tw = (ctx.measureText ? ctx.measureText("Сьогодні").width : 56) + 14;
+    const th = Math.max(18, tFont + 7);
+    fcDrawRoundedRect(ctx, todayX - tw / 2, axisY - th / 2, tw, th, 999);
+    ctx.fillStyle = "#e3273a";
+    ctx.fill();
+    ctx.fillStyle = "#ffffff";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("Сьогодні", todayX, axisY + 0.5);
+    ctx.restore();
+  }
+
   ctx.restore();
 }
 
@@ -2112,8 +2687,22 @@ class FlightClubDockView extends BaseItemView {
   getViewType() { return DOCK_VIEW_TYPE; }
   getDisplayText() { return "FlightClub"; }
   getIcon() { return BRAND_ICON; }
-  async onOpen() { this.render(); }
-  async onClose() { this.hubHost?.cleanup?.(); this.hubHost = {}; this.contentEl?.empty?.(); }
+  async onOpen() {
+    const hosts = [
+      this.containerEl?.closest?.(".workspace-tabs"),
+      this.containerEl?.closest?.(".workspace-split.mod-right-split"),
+    ].filter(Boolean);
+    this._dockHostEls = hosts;
+    for (const hostEl of hosts) hostEl.classList?.add?.("fc-has-live-dock");
+    this.render();
+  }
+  async onClose() {
+    for (const hostEl of this._dockHostEls || []) hostEl?.classList?.remove?.("fc-has-live-dock");
+    this._dockHostEls = [];
+    this.hubHost?.cleanup?.();
+    this.hubHost = {};
+    this.contentEl?.empty?.();
+  }
   render() {
     const root = this.contentEl;
     if (!root) return;
@@ -2358,16 +2947,29 @@ module.exports = class FlightClubMarkdown extends Plugin {
         this.accountVerified = false;
         this.accountIsAdmax = false;
         this.accountCanSyncPrivate = false;
+        this.accountRestricted = result.reason === "restricted";
+        if (this.accountRestricted) {
+          this.remoteCatalog = [];
+          this.drivePreview = null;
+          this.vaultConfig.pairedCanSync = false;
+          this.vaultConfig.pairedReadDrive = false;
+          this.vaultConfig.pairedReadPlatform = false;
+          this.pairMessage = result.error || "Обліковий запис у карантині або ще не підтверджений.";
+        }
         this.vaultConfig.pairedCanEdit = false;
         this.stopLiveSession();
         this.refreshDockViews();
         return;
       }
+      this.accountRestricted = false;
       this.vaultConfig.pairedUser = result.viewer.displayName || "Учасник";
       this.vaultConfig.pairedUserId = result.viewer.userId;
       this.vaultConfig.pairedRole = result.viewer.roleLabel;
+      if ("accessTier" in result.viewer) this.vaultConfig.pairedAccessTier = result.viewer.accessTier || null;
       this.vaultConfig.pairedCanEdit = result.viewer.canEdit === true;
       this.vaultConfig.pairedCanSync = result.viewer.canSync ?? (result.viewer.isAdmax === true || result.viewer.canEdit === true);
+      if ("canReadDrive" in result.viewer) this.vaultConfig.pairedReadDrive = result.viewer.canReadDrive === true;
+      if ("canReadPlatform" in result.viewer) this.vaultConfig.pairedReadPlatform = result.viewer.canReadPlatform === true;
       this.accountVerified = true;
       this.accountIsAdmax = result.viewer.isAdmax === true;
       this.accountCanSyncPrivate = result.viewer.canSyncPrivate === true;
@@ -2860,10 +3462,6 @@ module.exports = class FlightClubMarkdown extends Plugin {
     this.stopLiveSession();
     this.closeUpdateDetails?.();
     this.dialog?.close();
-    try {
-      this.app.workspace?.detachLeavesOfType?.(DOCK_VIEW_TYPE);
-      this.app.workspace?.detachLeavesOfType?.(ZONE_GRAPH_VIEW_TYPE);
-    } catch {}
   }
 
   recordUnreviewedSiteUpdate(path, { count = 1, changes = [], excerpts = [], summary = "Автооновлення із сайту", kind = "platform", updatedAt = new Date().toISOString(), editorName = null, editorUserId = null, editedAt = null } = {}) {
@@ -6092,7 +6690,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
   async startPairingFlow() {
     if (!this.alive || this.pairStarting || this.pairSaving) return;
     if (this.pendingPair && Date.now() < this.pendingPair.expires) {
-      this.openSite(this.pendingPair.url);
+      this.openSite(this.pendingPair.url, typeof window !== "undefined" ? window : undefined, { external: true });
       void this.checkPairing(this.pendingPair);
       return;
     }
@@ -6112,7 +6710,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
       target.searchParams.set("challenge", challenge);
       const pending = { id, token, url: target.href, expires: Date.now() + 5 * 60_000, state: "waiting", checking: false };
       this.pendingPair = pending;
-      this.openSite(pending.url);
+      this.openSite(pending.url, typeof window !== "undefined" ? window : undefined, { external: true });
       this.refreshDockViews();
       this.pairTimer = setTimeout(() => void this.checkPairing(pending), 800);
     } catch {
@@ -6170,6 +6768,13 @@ module.exports = class FlightClubMarkdown extends Plugin {
         new Notice("Сайт підтвердив доступ. Не вдалося зберегти його в Obsidian. Натисніть «Перевірити зараз».");
         return;
       } finally { pending.checking = false; }
+    } else if (verified.reason === "restricted") {
+      this.pendingPair = null;
+      this.accountRestricted = true;
+      this.pairMessage = verified.error || "Обліковий запис у карантині або ще не підтверджений.";
+      this.refreshDockViews();
+      new Notice(this.pairMessage);
+      return;
     } else {
       const nextState = verified.reason || "waiting";
       if (pending.state !== nextState) {
@@ -6187,9 +6792,24 @@ module.exports = class FlightClubMarkdown extends Plugin {
       const response = await this.siteRequest({ url: SITE + "/m/obsidian-sync?obsidian=device-v1",
         method: "GET", headers: this.authHeaders(token), throw: false });
       const viewer = response.status === 200 ? response.json?.viewer : null;
-      return response.status === 200 && response.json?.ok === true && UUID.test(viewer?.userId || "")
-        ? { ok: true, viewer }
-        : { ok: false, reason: response.status === 401 ? "waiting" : response.status === 426 ? "update" : response.status === 403 ? "denied" : "offline" };
+      if (response.status === 200 && response.json?.ok === true && UUID.test(viewer?.userId || "")) {
+        return { ok: true, viewer };
+      }
+      const isRestricted = response.status === 403 && (response.json?.code === "ACCOUNT_RESTRICTED" || response.json?.code === "ROLE_INSUFFICIENT");
+      return {
+        ok: false,
+        reason: isRestricted
+          ? "restricted"
+          : response.status === 401
+            ? "waiting"
+            : response.status === 426
+              ? "update"
+              : response.status === 403
+                ? "denied"
+                : "offline",
+        code: response.json?.code || null,
+        error: response.json?.error || null,
+      };
     } catch { return { ok: false, reason: "offline" }; }
   }
 
@@ -6215,6 +6835,8 @@ module.exports = class FlightClubMarkdown extends Plugin {
       this.vaultConfig.pairedUser = viewer.displayName || "Учасник";
       this.vaultConfig.pairedRole = viewer.roleLabel || "Учасник";
       this.vaultConfig.pairedHub = viewer.hubCity || null;
+      if ("accessTier" in viewer) this.vaultConfig.pairedAccessTier = viewer.accessTier || null;
+      else delete this.vaultConfig.pairedAccessTier;
       this.vaultConfig.pairedCanEdit = viewer.canEdit === true;
       this.vaultConfig.pairedCanSync = viewer.canSync ?? (viewer.canEdit === true || viewer.isAdmax === true);
       if ("canSyncWrite" in viewer) this.vaultConfig.pairedCanSyncWrite = viewer.canSyncWrite === true;
@@ -6224,6 +6846,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
       if ("canReadPlatform" in viewer) this.vaultConfig.pairedReadPlatform = viewer.canReadPlatform === true;
       else delete this.vaultConfig.pairedReadPlatform;
       this.accountVerified = true;
+      this.accountRestricted = false;
       this.accountIsAdmax = viewer.isAdmax === true;
       this.accountCanSyncPrivate = viewer.canSyncPrivate === true;
       this.drivePreview = null;
@@ -6264,15 +6887,26 @@ module.exports = class FlightClubMarkdown extends Plugin {
       const account = await this.verifyDeviceTokenOnServer(token);
       if (!this.alive || token !== this.vaultConfig.deviceToken) return;
       this.accountVerified = account.ok === true;
+      this.accountRestricted = account.reason === "restricted";
       this.accountIsAdmax = account.ok === true && account.viewer.isAdmax === true;
       this.accountCanSyncPrivate = account.ok === true && account.viewer.canSyncPrivate === true;
       if (!account.ok) {
         this.vaultConfig.pairedCanEdit = false;
         this.stopLiveSession();
         this.drivePreview = null;
+        if (account.reason === "restricted") {
+          this.remoteCatalog = [];
+          this.vaultConfig.pairedCanSync = false;
+          this.vaultConfig.pairedReadDrive = false;
+          this.vaultConfig.pairedReadPlatform = false;
+          this.driveDownloadStatus = "Обмежений доступ (карантин або непідтверджений акаунт).";
+          this.refreshDockViews();
+          return;
+        }
         throw new Error('Не вдалося підтвердити акаунт. Перевірте підключення або увійдіть повторно.');
       }
       this.vaultConfig.pairedRole = account.viewer.roleLabel;
+      if ("accessTier" in account.viewer) this.vaultConfig.pairedAccessTier = account.viewer.accessTier || null;
       if (account.viewer.userId) this.vaultConfig.pairedUserId = account.viewer.userId;
       this.vaultConfig.pairedCanEdit = account.viewer.canEdit === true;
       this.vaultConfig.pairedCanSync = account.viewer.canSync ?? (account.viewer.canEdit === true || account.viewer.isAdmax === true);
@@ -8554,12 +9188,47 @@ module.exports = class FlightClubMarkdown extends Plugin {
     finally { this.importingSlug = null; }
   }
 
-  renderHistoryPanel(container, file, link) {
-    const headerRow = container.createDiv({ cls: "fc-history-head" });
+  renderHistoryPanel(container, file, link, opts = {}) {
+    const showTitle = opts.showTitle !== false;
+    const doc = container.ownerDocument || document;
+    const headerRow = container.createDiv({ cls: "fc-history-head" + (showTitle ? "" : " is-compact") });
     const titleWrap = headerRow.createDiv({ cls: "fc-history-head-title" });
-    titleWrap.createEl("h4", { text: "Історія змін", cls: "fc-deck-title" });
+    if (showTitle) titleWrap.createEl("h4", { text: "Історія змін", cls: "fc-deck-title" });
     const status = titleWrap.createDiv({ cls: "fc-deck-sub", attr: { role: "status" } });
     const baseline = this.driveFiles?.get(file?.path);
+    const HISTORY_CACHE_TTL = 45_000;
+    const driveCache = (this._driveHistoryCache ??= new Map());
+    const siteCache = (this._siteHistoryCache ??= new Map());
+    const readCache = (cache, key) => {
+      const hit = cache.get(key);
+      if (!hit) return null;
+      if (Date.now() - hit.at > HISTORY_CACHE_TTL) { cache.delete(key); return null; }
+      return hit.data;
+    };
+    const writeCache = (cache, key, data) => {
+      if (cache.size > 30) {
+        const oldest = cache.keys().next().value;
+        if (oldest) cache.delete(oldest);
+      }
+      cache.set(key, { at: Date.now(), data });
+    };
+    const clearCachePrefix = (cache, prefix) => {
+      for (const k of cache.keys()) {
+        if (k === prefix || k.startsWith(`${prefix}::`)) cache.delete(k);
+      }
+    };
+    const renderSkeleton = (parent, rows = 3) => {
+      const skel = parent.createDiv({ cls: "fc-history-skeleton", attr: { role: "status", "aria-label": "Завантаження ревізій…" } });
+      for (let i = 0; i < rows; i++) skel.createDiv({ cls: "fc-history-skel-bar" });
+      return skel;
+    };
+    const makeBtnWithIcon = (parent, iconKind, label, cls, attr = {}) => {
+      const btn = parent.createEl("button", { cls, attr: { type: "button", ...attr } });
+      const svg = fcGraphIconSvg(iconKind, doc, 13);
+      if (svg) btn.append(svg);
+      const lblSpan = btn.createSpan({ text: label, cls: "fc-history-btn-lbl" });
+      return { btn, lblSpan };
+    };
 
     const appendDiffRow = (diffWrap, row) => {
       const doc = diffWrap.ownerDocument;
@@ -8601,7 +9270,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
         .slice(0, 10);
       if (!archived.length) return 0;
       const details = parentEl.createEl("details", { cls: "fc-history-archive-box" });
-      details.createEl("summary", { text: `📦 Локальні резервні копії Sync Archive (${archived.length})` });
+      details.createEl("summary", { text: `Локальні резервні копії Sync Archive (${archived.length})` });
       const ul = details.createEl("ul", { cls: "fc-history-list fc-history-archive-list" });
       const fmt = new Intl.DateTimeFormat("uk-UA", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
       for (const af of archived) {
@@ -8640,13 +9309,9 @@ module.exports = class FlightClubMarkdown extends Plugin {
     const driveId = file ? this.resolveDriveIdForFile?.(file) : null;
     if (file && driveId && !link) {
       const headBtns = headerRow.createDiv({ cls: "fc-history-head-actions" });
-      const docsBtn = headBtns.createEl("button", {
-        text: "Docs ↗",
-        cls: "fc-deck-btn fc-history-refresh",
-        attr: { type: "button", title: `Відкрити у Google Docs / Drive` },
-      });
+      const { btn: docsBtn } = makeBtnWithIcon(headBtns, "open", "Docs", "fc-deck-btn fc-history-refresh", { title: "Відкрити у Google Docs / Drive" });
       docsBtn.addEventListener("click", () => this.openSite(driveOpenUrlForPath(driveId, file?.path)));
-      const refresh = headBtns.createEl("button", { text: "↻ Оновити", cls: "fc-deck-btn fc-history-refresh", attr: { type: "button" } });
+      const { btn: refresh } = makeBtnWithIcon(headBtns, "refresh", "Оновити", "fc-deck-btn fc-history-refresh", { "data-fc-history-refresh": "" });
       const list = container.createEl("ul", { cls: "fc-history-list", attr: { "aria-label": "Ревізії Google Drive" } });
       const preview = container.createDiv({ cls: "fc-history-preview" });
       const historyEndpoint = `${SITE}/m/obsidian-sync?obsidian=drive-history-v1&fileId=${encodeURIComponent(driveId)}`;
@@ -8654,14 +9319,21 @@ module.exports = class FlightClubMarkdown extends Plugin {
       let epoch = 0, previewEpoch = 0;
       let selectedId = null;
       let diffMode = "vs-current";
+      let wrapLines = true;
       const rowButtons = new Map();
 
-      const readDriveHistory = async (snapshotId = "") => {
+      const readDriveHistory = async (snapshotId = "", { force = false } = {}) => {
+        const cacheKey = snapshotId ? `${driveId}::${snapshotId}` : driveId;
+        if (!force) {
+          const hit = readCache(driveCache, cacheKey);
+          if (hit) return hit;
+        }
         const reqUrl = snapshotId ? `${historyEndpoint}&snapshotId=${encodeURIComponent(snapshotId)}` : historyEndpoint;
         const response = await this.siteRequest({ url: reqUrl, method: "GET", headers: this.authHeaders(), throw: false });
         if (response.status !== 200 || response.json?.ok !== true) {
           throw new Error(response.json?.error || "Історія Google Drive недоступна. Перевірте підключення FlightClub.");
         }
+        writeCache(driveCache, cacheKey, response.json);
         return response.json;
       };
 
@@ -8702,10 +9374,20 @@ module.exports = class FlightClubMarkdown extends Plugin {
             summary.createEl("span", { text: "Ідентично", cls: "fc-history-pill is-neutral" });
             preview.createDiv({ cls: "fc-history-identical", text: "Ця ревізія повністю збігається з поточним текстом у вашому Obsidian." });
           } else {
-            const badges = summary.createDiv({ cls: "fc-history-stat-badges" });
-            if (diff.addedLines > 0) badges.createEl("span", { text: `+${diff.addedLines}`, cls: "fc-history-pill is-add" });
-            if (diff.removedLines > 0) badges.createEl("span", { text: `−${diff.removedLines}`, cls: "fc-history-pill is-del" });
-            const diffWrap = preview.createDiv({ cls: "fc-diff-view", attr: { tabindex: "0", "aria-label": "Порівняння змін" } });
+            const summaryRight = summary.createDiv({ cls: "fc-history-stat-badges" });
+            if (diff.addedLines > 0) summaryRight.createEl("span", { text: `+${diff.addedLines}`, cls: "fc-history-pill is-add" });
+            if (diff.removedLines > 0) summaryRight.createEl("span", { text: `−${diff.removedLines}`, cls: "fc-history-pill is-del" });
+            const { btn: wrapBtn } = makeBtnWithIcon(summaryRight, "wrap", "Перенос", "fc-history-wrap-btn" + (wrapLines ? " is-active" : ""), {
+              "aria-pressed": String(wrapLines),
+              title: "Переносити довгі рядки й посилання",
+            });
+            const diffWrap = preview.createDiv({ cls: "fc-diff-view" + (wrapLines ? "" : " is-nowrap"), attr: { tabindex: "0", "aria-label": "Порівняння змін" } });
+            wrapBtn.addEventListener("click", () => {
+              wrapLines = !wrapLines;
+              wrapBtn.classList.toggle("is-active", wrapLines);
+              wrapBtn.setAttribute("aria-pressed", String(wrapLines));
+              diffWrap.classList.toggle("is-nowrap", !wrapLines);
+            });
             for (const block of diff.blocks) {
               if (block.type === "collapsed") {
                 const foldBtn = diffWrap.createEl("button", {
@@ -8753,14 +9435,23 @@ module.exports = class FlightClubMarkdown extends Plugin {
                 await this.pushActiveFileToDrive(file).catch(() => {});
               }
               new Notice("Ревізію відновлено (резервну копію збережено у Sync Archive).");
-              void loadDriveHistory();
+              clearCachePrefix(driveCache, driveId);
+              void loadDriveHistory(true);
             },
           }));
         }
-        const copyBtn = actions.createEl("button", { text: "📋 Копіювати", cls: "fc-deck-btn", attr: { type: "button" } });
+        const { btn: copyBtn, lblSpan: copyLbl } = makeBtnWithIcon(actions, "copy", "Копіювати", "fc-deck-btn fc-history-copy-btn");
         copyBtn.addEventListener("click", async () => {
           try {
             await navigator.clipboard?.writeText(snapText);
+            copyBtn.classList.add("is-copied");
+            copyLbl.setText("✓ Скопійовано");
+            setTimeout(() => {
+              if (copyBtn.isConnected) {
+                copyBtn.classList.remove("is-copied");
+                copyLbl.setText("Копіювати");
+              }
+            }, 1600);
             new Notice("Текст ревізії скопійовано.");
           } catch {
             new Notice("Буфер обміну недоступний.");
@@ -8772,8 +9463,11 @@ module.exports = class FlightClubMarkdown extends Plugin {
         const expected = ++previewEpoch;
         selectedId = entry.id;
         for (const [id, btn] of rowButtons) btn.classList.toggle("is-selected", id === selectedId);
-        preview.empty();
-        preview.createDiv({ cls: "fc-history-loading", text: "Завантажуємо ревізію Google Drive…" });
+        const snapCached = Boolean(readCache(driveCache, `${driveId}::${entry.id}`));
+        if (!snapCached) {
+          preview.empty();
+          renderSkeleton(preview, 3);
+        }
         try {
           const [data, localRaw] = await Promise.all([
             readDriveHistory(entry.id),
@@ -8789,16 +9483,18 @@ module.exports = class FlightClubMarkdown extends Plugin {
         }
       };
 
-      const loadDriveHistory = async () => {
+      const loadDriveHistory = async (force = false) => {
         const generation = ++epoch;
         previewEpoch++;
         selectedId = null;
         rowButtons.clear();
         preview.empty(); list.empty();
+        if (force || !readCache(driveCache, driveId)) renderSkeleton(list, 3);
         status.setText("Завантажуємо ревізії Google Drive…");
         try {
-          const history = await readDriveHistory();
+          const history = await readDriveHistory("", { force });
           if (!container.isConnected || generation !== epoch) return;
+          list.empty();
           const entries = Array.isArray(history.entries) ? history.entries : [];
           status.setText(
             entries.length
@@ -8846,7 +9542,10 @@ module.exports = class FlightClubMarkdown extends Plugin {
         }
       };
 
-      refresh.addEventListener("click", () => void loadDriveHistory());
+      refresh.addEventListener("click", () => {
+        clearCachePrefix(driveCache, driveId);
+        void loadDriveHistory(true);
+      });
       void loadDriveHistory();
       renderLocalArchiveSection(container, file);
       return;
@@ -8865,7 +9564,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
       );
       return;
     }
-    const refresh = headerRow.createEl("button", { text: "↻ Оновити", cls: "fc-deck-btn fc-history-refresh", attr: { type: "button" } });
+    const { btn: refresh } = makeBtnWithIcon(headerRow, "refresh", "Оновити", "fc-deck-btn fc-history-refresh", { "data-fc-history-refresh": "" });
     const list = container.createEl("ul", { cls: "fc-history-list", attr: { "aria-label": "Версії сторінки" } });
     const preview = container.createDiv({ cls: "fc-history-preview" });
     const url = pageUrl(link.slug) + "?api=1&history=1";
@@ -8873,11 +9572,18 @@ module.exports = class FlightClubMarkdown extends Plugin {
     let epoch = 0, previewEpoch = 0, receipt = null;
     let selectedRev = null;
     let diffMode = "vs-current";
+    let wrapLines = true;
     const rowButtons = new Map();
 
-    const read = async (suffix = "") => {
+    const read = async (suffix = "", { force = false } = {}) => {
+      const cacheKey = suffix ? `${link.slug}::${suffix}` : link.slug;
+      if (!force) {
+        const hit = readCache(siteCache, cacheKey);
+        if (hit) return hit;
+      }
       const response = await this.siteRequest({ url: url + suffix, method: "GET", headers: this.authHeaders(), throw: false });
       if (response.status !== 200 || response.json?.ok !== true) throw new Error("Історія недоступна. Перевірте підключення FlightClub.");
+      writeCache(siteCache, cacheKey, response.json);
       return response.json;
     };
 
@@ -8932,12 +9638,17 @@ module.exports = class FlightClubMarkdown extends Plugin {
         const summary = preview.createDiv({ cls: "fc-history-diff-summary" });
         const scopeLabel = diffMode === "this-edit" ? "Змінено у цій ревізії" : "Відмінності від поточної версії";
         summary.createEl("span", { text: scopeLabel, cls: "fc-history-diff-scope" });
+        let wrapBtn = null;
         if (diff.identical) {
           summary.createEl("span", { text: "Ідентично", cls: "fc-history-pill is-neutral" });
         } else {
-          const badges = summary.createDiv({ cls: "fc-history-stat-badges" });
-          if (diff.addedLines > 0) badges.createEl("span", { text: `+${diff.addedLines}`, cls: "fc-history-pill is-add" });
-          if (diff.removedLines > 0) badges.createEl("span", { text: `−${diff.removedLines}`, cls: "fc-history-pill is-del" });
+          const summaryRight = summary.createDiv({ cls: "fc-history-stat-badges" });
+          if (diff.addedLines > 0) summaryRight.createEl("span", { text: `+${diff.addedLines}`, cls: "fc-history-pill is-add" });
+          if (diff.removedLines > 0) summaryRight.createEl("span", { text: `−${diff.removedLines}`, cls: "fc-history-pill is-del" });
+          wrapBtn = makeBtnWithIcon(summaryRight, "wrap", "Перенос", "fc-history-wrap-btn" + (wrapLines ? " is-active" : ""), {
+            "aria-pressed": String(wrapLines),
+            title: "Переносити довгі рядки й посилання",
+          }).btn;
         }
 
         if (diff.identical) {
@@ -8948,7 +9659,15 @@ module.exports = class FlightClubMarkdown extends Plugin {
               : "Ця версія повністю збігається з поточним текстом документа.",
           });
         } else {
-          const diffWrap = preview.createDiv({ cls: "fc-diff-view", attr: { tabindex: "0", "aria-label": "Порівняння змін" } });
+          const diffWrap = preview.createDiv({ cls: "fc-diff-view" + (wrapLines ? "" : " is-nowrap"), attr: { tabindex: "0", "aria-label": "Порівняння змін" } });
+          if (wrapBtn) {
+            wrapBtn.addEventListener("click", () => {
+              wrapLines = !wrapLines;
+              wrapBtn.classList.toggle("is-active", wrapLines);
+              wrapBtn.setAttribute("aria-pressed", String(wrapLines));
+              diffWrap.classList.toggle("is-nowrap", !wrapLines);
+            });
+          }
           for (const block of diff.blocks) {
             if (block.type === "collapsed") {
               const foldBtn = diffWrap.createEl("button", {
@@ -8988,14 +9707,23 @@ module.exports = class FlightClubMarkdown extends Plugin {
             receipt = null;
             if (session?.file === file && this.liveSession === session) this.queueLiveCheck(session, 0);
             new Notice("Версію відновлено.");
-            void load();
+            clearCachePrefix(siteCache, link.slug);
+            void load(true);
           },
         }));
       }
-      const copyBtn = actions.createEl("button", { text: "📋 Копіювати", cls: "fc-deck-btn", attr: { type: "button" } });
+      const { btn: copyBtn, lblSpan: copyLbl } = makeBtnWithIcon(actions, "copy", "Копіювати", "fc-deck-btn fc-history-copy-btn");
       copyBtn.addEventListener("click", async () => {
         try {
           await navigator.clipboard?.writeText(snapshot.content);
+          copyBtn.classList.add("is-copied");
+          copyLbl.setText("✓ Скопійовано");
+          setTimeout(() => {
+            if (copyBtn.isConnected) {
+              copyBtn.classList.remove("is-copied");
+              copyLbl.setText("Копіювати");
+            }
+          }, 1600);
           new Notice("Текст версії скопійовано.");
         } catch {
           new Notice("Буфер обміну недоступний.");
@@ -9007,11 +9735,15 @@ module.exports = class FlightClubMarkdown extends Plugin {
       const expected = ++previewEpoch;
       selectedRev = entry.revision;
       for (const [rev, btn] of rowButtons) btn.classList.toggle("is-selected", rev === selectedRev);
-      preview.empty();
-      preview.createDiv({ cls: "fc-history-loading", text: "Завантажуємо різницю версії…" });
+      const revSuffix = "&revision=" + encodeURIComponent(entry.revision);
+      const revCached = Boolean(readCache(siteCache, `${link.slug}::${revSuffix}`));
+      if (!revCached) {
+        preview.empty();
+        renderSkeleton(preview, 3);
+      }
       try {
         const [data, local] = await Promise.all([
-          read("&revision=" + encodeURIComponent(entry.revision)),
+          read(revSuffix),
           this.localNote(file).catch(() => null),
         ]);
         if (!container.isConnected || expected !== previewEpoch) return;
@@ -9024,16 +9756,18 @@ module.exports = class FlightClubMarkdown extends Plugin {
       }
     };
 
-    const load = async () => {
+    const load = async (force = false) => {
       const generation = ++epoch;
       previewEpoch++;
       selectedRev = null;
       rowButtons.clear();
       preview.empty(); list.empty();
+      if (force || !readCache(siteCache, link.slug)) renderSkeleton(list, 3);
       status.setText("Завантаження…");
       try {
-        const history = await read();
+        const history = await read("", { force });
         if (!container.isConnected || generation !== epoch) return;
+        list.empty();
         const entries = Array.isArray(history.entries) ? history.entries.filter((entry) => VERSION.test(entry.revision)) : [];
         status.setText(entries.length ? "Версій: " + entries.length : "Версії з’являться після збереження.");
         const time = new Intl.DateTimeFormat("uk-UA", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -9088,7 +9822,10 @@ module.exports = class FlightClubMarkdown extends Plugin {
         if (generation === epoch) status.setText(error instanceof Error ? error.message : "Не вдалося завантажити історію.");
       }
     };
-    refresh.addEventListener("click", () => void load());
+    refresh.addEventListener("click", () => {
+      clearCachePrefix(siteCache, link.slug);
+      void load(true);
+    });
     void load();
   }
 
@@ -9503,6 +10240,8 @@ module.exports = class FlightClubMarkdown extends Plugin {
         }
       }
       const dateInfo = extractObsidianNoteDate(f, fm);
+      const timelineSpan = extractObsidianDateTimeline(f, fm, dateInfo);
+      const projectMeta = extractObsidianProjectMeta(f.path, fm);
       const topics = extractObsidianNoteTags(f, fm, cache, false);
       const tags = withLinks ? extractObsidianNoteTags(f, fm, cache) : topics;
       if (withLinks) {
@@ -9602,6 +10341,13 @@ module.exports = class FlightClubMarkdown extends Plugin {
         statusLabel: statusMeta ? `${statusMeta.dot} ${statusMeta.label}` : "",
         dateInfo,
         dateLabel: dateInfo ? `${dateInfo.source}: ${dateInfo.label}` : "",
+        startMs: timelineSpan.startMs,
+        endMs: timelineSpan.endMs,
+        spanDays: timelineSpan.spanDays,
+        hasExplicitDate: timelineSpan.hasExplicitDate,
+        milestones: timelineSpan.milestones,
+        projectKey: projectMeta.projectKey,
+        projectLabel: projectMeta.projectLabel,
         tags: withLinks ? tags : [],
         topics,
         itemHolder,
@@ -9792,13 +10538,14 @@ module.exports = class FlightClubMarkdown extends Plugin {
     const layout = layoutObsidianZoneGraph(finalNodes, edges, validMode, filterOpts.skipPhysics === true, customZones, {
       physicsLayout: filterOpts.physicsLayout,
       forces: filterOpts.forces,
+      prevPositions: filterOpts.prevPositions,
     });
     layout.allTags = [...tagCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 24);
     layout.monthBuckets = [...monthCounts.entries()].sort((a, b) => a[0].localeCompare(b[0])).slice(-10);
     layout.allMonths = [...monthCounts.entries()].sort((a, b) => b[0].localeCompare(a[0]));
-    layout.filteredNotes = filteredNotes;
+    layout.filteredNotes = finalNodes.filter((n) => n.kind !== "tag");
     layout.rawRecords = rawRecords;
-    layout.totalNotesCount = filteredNotes.length;
+    layout.totalNotesCount = layout.filteredNotes.length;
     layout.rawTotalNotesCount = rawRecords.length;
     return layout;
   }
@@ -10084,6 +10831,11 @@ module.exports = class FlightClubMarkdown extends Plugin {
     let drawerOpen = false;
     let selectedNodeId = null;
     let physicsLayout = "obsidian";
+    let ganttZoom = "months";
+    const ganttCollapsedLanes = new Set();
+    const ganttExpandedLanes = new Set();
+    let ganttShowUndated = false;
+    let ganttScrollTodayNext = false;
     const forces = { center: 0.45, repel: 1.0, link: 1.0, distance: 85 };
     let listLimit = GRAPH_PAGE;
     let scale = 1, tx = 0, ty = 0;
@@ -10114,6 +10866,8 @@ module.exports = class FlightClubMarkdown extends Plugin {
     const modeButtons = new Map();
 
     const searchWrap = toolbar.createDiv({ cls: "fc-zgraph-search-wrap" });
+    const searchIcon = fcGraphIconSvg("search", doc, 14);
+    if (searchIcon) searchWrap.append(searchIcon);
     const searchInput = searchWrap.createEl("input", {
       cls: "fc-zgraph-search",
       attr: {
@@ -10130,22 +10884,50 @@ module.exports = class FlightClubMarkdown extends Plugin {
     clearSearchBtn.hidden = true;
 
     const toolbarRight = toolbar.createDiv({ cls: "fc-zgraph-toolbar-right" });
-    const layoutToggleBtn = toolbarRight.createEl("button", {
-      text: physicsLayout === "obsidian" ? "🌌 Фізика" : "🗂️ Зони",
-      cls: "fc-zgraph-tool-btn fc-zgraph-layout-toggle" + (physicsLayout === "obsidian" ? " is-active" : ""),
+    const layoutGroup = toolbarRight.createDiv({
+      cls: "fc-zgraph-layout-group",
+      attr: { role: "group", "aria-label": "Вигляд візуалізації" },
+    });
+    const layoutModeBtns = new Map();
+    for (const lKey of GRAPH_LAYOUT_ORDER) {
+      const meta = GRAPH_LAYOUT_META[lKey];
+      const lBtn = layoutGroup.createEl("button", {
+        cls: "fc-zgraph-layout-btn" + (physicsLayout === lKey ? " is-active" : ""),
+        attr: {
+          type: "button",
+          "data-fc-layout-mode": lKey,
+          "aria-pressed": String(physicsLayout === lKey),
+          title: meta.desc,
+        },
+      });
+      const iconEl = fcGraphIconSvg(lKey, doc, 13);
+      if (iconEl) lBtn.append(iconEl);
+      lBtn.createSpan({ text: meta.short, cls: "fc-zgraph-layout-lbl" });
+      layoutModeBtns.set(lKey, lBtn);
+    }
+    const layoutToggleBtn = layoutGroup.createEl("button", {
+      cls: "fc-zgraph-layout-cycle",
       attr: {
         type: "button",
         "data-fc-toggle-physics-layout": "",
+        "data-fc-layout-current": physicsLayout,
         "aria-pressed": String(physicsLayout === "obsidian"),
-        title: "Перемкнути вільний граф з фізикою Obsidian / рамкові зони",
+        "aria-label": "Перемкнути вигляд: Фізика → Роадмап → Зони → Гантт",
+        title: "Перемкнути наступний вигляд (Фізика → Роадмап → Зони → Гантт)",
       },
     });
+    const cycleIconEl = fcGraphIconSvg("cycle", doc, 12);
+    if (cycleIconEl) layoutToggleBtn.append(cycleIconEl);
+
     const filters = toolbarRight.createEl("details", { cls: "fc-zgraph-filters" });
-    const filterLabel = filters.createEl("summary", { text: "Фільтри", cls: "fc-zgraph-tool-btn fc-zgraph-filter-label" });
+    const filterLabel = filters.createEl("summary", { cls: "fc-zgraph-tool-btn fc-zgraph-filter-label" });
+    const filterIconEl = fcGraphIconSvg("filters", doc, 13);
+    if (filterIconEl) filterLabel.append(filterIconEl);
+    const filterLabelText = filterLabel.createSpan({ text: "Фільтри" });
     const filterPopover = filters.createDiv({ cls: "fc-zgraph-filter-popover" });
     const filterOptions = filterPopover.createDiv({ cls: "fc-zgraph-filter-options" });
     const tagNodesToggle = filterOptions.createEl("button", {
-      text: "🏷️ Вузли-теги",
+      text: "Вузли-теги",
       cls: "fc-zgraph-toggle-pill" + (effectiveIncludeTagNodes() ? " is-active" : ""),
       attr: {
         type: "button",
@@ -10155,7 +10937,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
       },
     });
     const connectedToggle = filterOptions.createEl("button", {
-      text: "🔗 Зі зв’язками",
+      text: "Зі зв’язками",
       cls: "fc-zgraph-toggle-pill",
       attr: { type: "button", "data-fc-toggle-connected-only": "", "aria-pressed": "false", title: "Приховати ізольовані нотатки без посилань" },
     });
@@ -10238,15 +11020,19 @@ module.exports = class FlightClubMarkdown extends Plugin {
     const tagBar = filterPopover.createDiv({ cls: "fc-zgraph-tag-bar", attr: { "data-fc-graph-tag-bar": "" } });
 
     const drawerBtn = toolbarRight.createEl("button", {
-      text: "Список (0)",
       cls: "fc-zgraph-tool-btn fc-zgraph-drawer-btn",
       attr: { type: "button", "data-fc-drawer-toggle": "", "aria-pressed": "false", title: "Відкрити список нотаток та інспектор" },
     });
+    const drawerIconEl = fcGraphIconSvg("list", doc, 13);
+    if (drawerIconEl) drawerBtn.append(drawerIconEl);
+    const drawerBtnLabel = drawerBtn.createSpan({ text: "Список (0)", cls: "fc-zgraph-drawer-btn-lbl" });
     const refreshBtn = toolbarRight.createEl("button", {
-      text: "Оновити",
       cls: "fc-zgraph-tool-btn",
       attr: { type: "button", "data-fc-graph-refresh": "", title: "Перечитати нотатки та зв’язки Vault" },
     });
+    const refreshIconEl = fcGraphIconSvg("refresh", doc, 13);
+    if (refreshIconEl) refreshBtn.append(refreshIconEl);
+    refreshBtn.createSpan({ text: "Оновити" });
     const actionsMenu = toolbarRight.createEl("details", { cls: "fc-zgraph-actions-menu" });
     actionsMenu.createEl("summary", { text: "Дії ▾", cls: "fc-zgraph-tool-btn" });
     const actionsPopover = actionsMenu.createDiv({ cls: "fc-zgraph-actions-popover" });
@@ -10267,7 +11053,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
       attr: { type: "button", "data-fc-export-canvas": "showcase" },
     });
     const canvasShuffleBtn = actionsPopover.createEl("button", {
-      text: "🔀 Шафл прикладів у Canvas",
+      text: "Шафл прикладів у Canvas",
       cls: "fc-zgraph-menu-item",
       attr: { type: "button", "data-fc-export-canvas": "shuffle" },
     });
@@ -10328,13 +11114,23 @@ module.exports = class FlightClubMarkdown extends Plugin {
     let ctx = null;
     try { ctx = canvasEl.getContext?.("2d") || null; } catch { ctx = null; }
 
+    const ganttEl = stage.createDiv({
+      cls: "fc-zgraph-gantt",
+      attr: { "data-fc-gantt": "", role: "region", "aria-label": "Діаграма Гантта FlightClub" },
+    });
+    ganttEl.hidden = true;
+
     const tipEl = stage.createDiv({ cls: "fc-zgraph-tip" });
     tipEl.hidden = true;
 
     const controls = stage.createDiv({ cls: "fc-zgraph-controls" });
-    const reheatBtn = controls.createEl("button", { text: "⚡", cls: "fc-zgraph-ctrl-btn", attr: { type: "button", "data-fc-reheat-physics": "", "aria-label": "Перетрусити фізику графа", title: "Перетрусити фізику графа" } });
+    const reheatBtn = controls.createEl("button", { cls: "fc-zgraph-ctrl-btn", attr: { type: "button", "data-fc-reheat-physics": "", "aria-label": "Перетрусити фізику графа", title: "Перетрусити фізику графа" } });
+    const reheatIcon = fcGraphIconSvg("cycle", doc, 13);
+    if (reheatIcon) reheatBtn.append(reheatIcon); else reheatBtn.setText("↻");
     const zoomOutBtn = controls.createEl("button", { text: "−", cls: "fc-zgraph-ctrl-btn", attr: { type: "button", "data-fc-zoom-out": "", "aria-label": "Зменшити", title: "Зменшити" } });
-    const fitBtn = controls.createEl("button", { text: "⊡", cls: "fc-zgraph-ctrl-btn fc-zgraph-fit-btn", attr: { type: "button", "data-fc-fit-view": "", "aria-label": "Умістити всі зони", title: "Умістити всі зони" } });
+    const fitBtn = controls.createEl("button", { cls: "fc-zgraph-ctrl-btn fc-zgraph-fit-btn", attr: { type: "button", "data-fc-fit-view": "", "aria-label": "Умістити всі зони", title: "Умістити всі зони" } });
+    const fitIcon = fcGraphIconSvg("zones", doc, 13);
+    if (fitIcon) fitBtn.append(fitIcon); else fitBtn.setText("⊡");
     const zoomInBtn = controls.createEl("button", { text: "+", cls: "fc-zgraph-ctrl-btn", attr: { type: "button", "data-fc-zoom-in": "", "aria-label": "Збільшити", title: "Збільшити" } });
 
     const drawerEl = workspace.createEl("aside", {
@@ -10387,12 +11183,13 @@ module.exports = class FlightClubMarkdown extends Plugin {
 
     const updateZoomReadout = () => {
       const pct = Math.round(scale * 100);
-      fitBtn.title = `Умістити всі зони (${pct}%)`;
+      const fitTitle = physicsLayout === "roadmap" ? "Умістити роадмап" : physicsLayout === "zones" ? "Умістити всі зони" : "Умістити граф";
+      fitBtn.title = `${fitTitle} (${pct}%)`;
     };
 
     const drawCanvas = () => {
       needsRender = false;
-      if (!ctx || !model) return;
+      if (!ctx || !model || physicsLayout === "gantt") return;
       updateCanvasSize();
       ctx.save();
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -10402,12 +11199,16 @@ module.exports = class FlightClubMarkdown extends Plugin {
       ctx.translate(tx, ty);
       ctx.scale(scale, scale);
 
-      // 1. Zone Containers (Boxed Canvas cards vs Organic Obsidian Cluster Glows)
-      const drawCluster = physicsLayout === "zones" ? fcDrawGraphZoneCard : fcDrawGraphClusterGlow;
-      for (const z of model.zones) {
-        const isActive = Boolean(activeZone && z.id === activeZone);
-        const isDim = Boolean(activeZone && z.id !== activeZone);
-        drawCluster(ctx, z, { isActive, isDim, isHeaderHovered: hoveredZoneHeaderId === z.id }, theme, scale);
+      // 1. Zone Containers (Roadmap Timeline + Year Checkpoints vs Boxed Cards vs Organic Glows)
+      if (physicsLayout === "roadmap" && model.roadmapMeta) {
+        fcDrawGraphRoadmapBackdrop(ctx, model.roadmapMeta, activeZone, theme, scale, tx, ty, stageW);
+      } else {
+        const drawCluster = physicsLayout === "zones" ? fcDrawGraphZoneCard : fcDrawGraphClusterGlow;
+        for (const z of model.zones) {
+          const isActive = Boolean(activeZone && z.id === activeZone);
+          const isDim = Boolean(activeZone && z.id !== activeZone);
+          drawCluster(ctx, z, { isActive, isDim, isHeaderHovered: hoveredZoneHeaderId === z.id }, theme, scale);
+        }
       }
 
       // 2. Curved Quadratic Bezier Edges
@@ -10510,10 +11311,17 @@ module.exports = class FlightClubMarkdown extends Plugin {
     }
 
     const fitView = (targetZoneId = activeZone, { immediate = false } = {}) => {
-      if (!model || !model.nodes.length) return;
+      if (!model || !model.nodes.length || physicsLayout === "gantt") return;
       updateCanvasSize();
       let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-      if (physicsLayout !== "zones") {
+      if (physicsLayout === "roadmap" && model.roadmapMeta) {
+        const rm = model.roadmapMeta;
+        const focusLane = targetZoneId ? rm.lanes?.find((l) => l.id === targetZoneId) : null;
+        minX = rm.minX;
+        maxX = rm.maxX;
+        minY = focusLane ? focusLane.topY - 56 : rm.minY;
+        maxY = focusLane ? focusLane.botY + 32 : rm.maxY;
+      } else if (physicsLayout !== "zones") {
         const targetNodes = targetZoneId
           ? model.nodes.filter((n) => n.zoneId === targetZoneId)
           : model.nodes;
@@ -10593,7 +11401,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
     const renderDrawer = () => {
       if (!model) return;
       const filteredNotes = getFilteredNotes();
-      drawerBtn.setText(`Список (${filteredNotes.length})`);
+      drawerBtnLabel.setText(`Список (${filteredNotes.length})`);
       drawerBtn.classList.toggle("is-active", drawerOpen);
       drawerBtn.setAttribute("aria-pressed", String(drawerOpen));
       drawerEl.hidden = !drawerOpen;
@@ -10718,24 +11526,34 @@ module.exports = class FlightClubMarkdown extends Plugin {
         return;
       }
       for (const note of filteredNotes.slice(0, listLimit)) {
+        const zoneMeta = model.zones.find((z) => z.id === note.zoneId);
         const li = list.createEl("li", { cls: "fc-zgraph-drawer-item" });
+        if (zoneMeta?.color) li.style?.setProperty?.("--fc-z-color", zoneMeta.color);
         const rowBtn = li.createEl("button", {
           cls: "fc-zgraph-drawer-row",
-          attr: { type: "button", "data-fc-drawer-note": note.path },
+          attr: { type: "button", "data-fc-drawer-note": note.path, title: note.path },
         });
         rowBtn.createSpan({ text: note.title, cls: "fc-zgraph-drawer-note-title" });
-        const meta = [note.dateInfo?.label, note.folder, ...(note.topics || []).slice(0, 3).map((t) => `#${t}`)].filter(Boolean);
-        if (meta.length) rowBtn.createSpan({ text: meta.join(" · "), cls: "fc-zgraph-drawer-note-meta" });
+        const shortFolder = String(note.folder || "").split("/").filter(Boolean).slice(-2).join("/");
+        const meta = [note.dateInfo?.label, shortFolder, ...(note.topics || []).slice(0, 2).map((t) => `#${t}`)].filter(Boolean);
+        if (meta.length) {
+          const metaEl = rowBtn.createSpan({ cls: "fc-zgraph-drawer-note-meta" });
+          metaEl.createSpan({ cls: "fc-zgraph-drawer-zone-dot" });
+          metaEl.createSpan({ text: meta.join(" · "), cls: "fc-zgraph-drawer-note-meta-txt" });
+        }
         rowBtn.addEventListener("click", () => {
           selectedNodeId = note.id;
           focusNode(note.id);
           renderDrawer();
+          if (physicsLayout === "gantt") renderGanttView();
         });
         const quickOpen = li.createEl("button", {
-          text: "↗",
           cls: "fc-zgraph-drawer-open",
           attr: { type: "button", "aria-label": `Відкрити ${note.title}`, title: "Відкрити нотатку" },
         });
+        const openSvg = fcGraphIconSvg("open", doc, 13);
+        if (openSvg) quickOpen.append(openSvg);
+        else quickOpen.setText("↗");
         quickOpen.addEventListener("click", () => void openVaultPath(note.path));
       }
       if (listLimit < filteredNotes.length) {
@@ -10750,6 +11568,402 @@ module.exports = class FlightClubMarkdown extends Plugin {
         });
       }
     };
+
+    function renderGanttView() {
+      if (!model || physicsLayout !== "gantt") return;
+      ganttEl.empty?.();
+      const filteredNotes = getFilteredNotes();
+      const dated = filteredNotes.filter((n) => Number.isFinite(n.startMs));
+      const undated = filteredNotes.filter((n) => !Number.isFinite(n.startMs));
+      const catMeta = FC_GRAPH_CATEGORIZATIONS[mode] || FC_GRAPH_CATEGORIZATIONS.domains;
+      const projectGroupedModes = mode === "domains" || mode === "hubs";
+
+      // 1. Gantt Controls Header Bar
+      const gHead = ganttEl.createDiv({ cls: "fc-zgraph-gantt-head" });
+      const gInfo = gHead.createDiv({ cls: "fc-zgraph-gantt-info" });
+      gInfo.createSpan({ text: catMeta.label, cls: "fc-zgraph-gantt-cat-badge" });
+      gInfo.createSpan({
+        text: `${dated.length} на шкалі` + (undated.length ? ` · ${undated.length} без дати` : ""),
+        cls: "fc-zgraph-gantt-count",
+      });
+
+      const gControls = gHead.createDiv({ cls: "fc-zgraph-gantt-controls" });
+      const zoomGrp = gControls.createDiv({ cls: "fc-zgraph-gantt-zoom-group", attr: { role: "group", "aria-label": "Масштаб часу" } });
+      for (const [zKey, zLbl] of [["weeks", "Тижні"], ["months", "Місяці"], ["years", "Роки"]]) {
+        const zb = zoomGrp.createEl("button", {
+          text: zLbl,
+          cls: "fc-zgraph-gantt-ctrl-btn" + (ganttZoom === zKey ? " is-active" : ""),
+          attr: { type: "button", "data-fc-gantt-zoom": zKey, "aria-pressed": String(ganttZoom === zKey) },
+        });
+        zb.addEventListener("click", () => {
+          if (ganttZoom === zKey) return;
+          ganttZoom = zKey;
+          ganttScrollTodayNext = false;
+          renderGanttView();
+        });
+      }
+
+      const todayBtn = gControls.createEl("button", {
+        text: "Сьогодні",
+        cls: "fc-zgraph-gantt-ctrl-btn fc-zgraph-gantt-today-btn",
+        attr: { type: "button", "data-fc-gantt-today": "", title: "Прокрутити шкалу до поточної дати" },
+      });
+
+      const activeZonesForGantt = model.zones.filter((z) => !activeZone || z.id === activeZone);
+      const allCollapsed = activeZonesForGantt.length > 0 && activeZonesForGantt.every((z) => ganttCollapsedLanes.has(z.id));
+      const collapseAllBtn = gControls.createEl("button", {
+        text: allCollapsed ? "Розгорнути всі" : "Згорнути всі",
+        cls: "fc-zgraph-gantt-ctrl-btn",
+        attr: { type: "button", "data-fc-gantt-collapse-all": "" },
+      });
+      collapseAllBtn.addEventListener("click", () => {
+        if (allCollapsed) ganttCollapsedLanes.clear();
+        else activeZonesForGantt.forEach((z) => ganttCollapsedLanes.add(z.id));
+        renderGanttView();
+      });
+
+      if (undated.length) {
+        const undatedBtn = gControls.createEl("button", {
+          text: `Постійна база (${undated.length})`,
+          cls: "fc-zgraph-gantt-ctrl-btn" + (ganttShowUndated ? " is-active" : ""),
+          attr: { type: "button", "data-fc-gantt-undated-toggle": "", "aria-pressed": String(ganttShowUndated) },
+        });
+        undatedBtn.addEventListener("click", () => {
+          ganttShowUndated = !ganttShowUndated;
+          renderGanttView();
+        });
+      }
+
+      // 2. Time Range & Track Metrics
+      const nowMs = Date.now();
+      const dayMs = 86_400_000;
+      const nowDate = new Date(nowMs);
+      const nowYear = nowDate.getUTCFullYear();
+      let rawMin = nowMs - 21 * dayMs;
+      let rawMax = nowMs + 28 * dayMs;
+      for (const n of dated) {
+        if (n.startMs < rawMin) rawMin = n.startMs;
+        const eMs = Number.isFinite(n.endMs) ? n.endMs : n.startMs;
+        if (eMs > rawMax) rawMax = eMs;
+      }
+      const dStart = new Date(rawMin);
+      const minMs = Date.UTC(dStart.getUTCFullYear(), dStart.getUTCMonth(), 1);
+      const dEnd = new Date(rawMax);
+      const maxMs = Date.UTC(dEnd.getUTCFullYear(), dEnd.getUTCMonth() + 1, 1);
+      const spanMs = Math.max(28 * dayMs, maxMs - minMs);
+      const totalDays = Math.max(28, Math.round(spanMs / dayMs));
+      const pxPerDay = ganttZoom === "weeks" ? 11.5 : ganttZoom === "years" ? 1.15 : 3.6;
+      const trackPx = Math.max(640, Math.min(9200, Math.round(totalDays * pxPerDay)));
+      const xPct = (ms) => Math.max(0, Math.min(100, ((ms - minMs) / spanMs) * 100));
+      const wPct = (sMs, eMs) => {
+        const left = xPct(sMs);
+        const end = Math.max(sMs + dayMs, Number.isFinite(eMs) ? eMs : sMs + dayMs);
+        const rawW = ((end - sMs) / spanMs) * 100;
+        return Math.max(0.9, Math.min(100 - left, rawW));
+      };
+      const todayPct = xPct(nowMs);
+
+      const scrollWrap = ganttEl.createDiv({ cls: "fc-zgraph-gantt-scroll" });
+      const grid = scrollWrap.createDiv({ cls: "fc-zgraph-gantt-grid" });
+      grid.style?.setProperty?.("--fc-gantt-track-w", `${trackPx}px`);
+
+      // Sticky Timeline Ruler Row
+      const rulerRow = grid.createDiv({ cls: "fc-zgraph-gantt-ruler-row" });
+      rulerRow.createDiv({
+        text: projectGroupedModes ? `${catMeta.label} / Проєкти` : `${catMeta.label} / Нотатки`,
+        cls: "fc-zgraph-gantt-corner",
+      });
+      const rulerTrack = rulerRow.createDiv({ cls: "fc-zgraph-gantt-ruler-track" });
+
+      const yearGuides = [];
+      const minYear = new Date(minMs).getUTCFullYear();
+      const maxYear = new Date(maxMs - dayMs).getUTCFullYear();
+      for (let y = minYear; y <= maxYear; y++) {
+        const yS = Math.max(minMs, Date.UTC(y, 0, 1));
+        const yE = Math.min(maxMs, Date.UTC(y + 1, 0, 1));
+        if (yE <= yS) continue;
+        const lPct = xPct(yS);
+        const segW = xPct(yE) - lPct;
+        yearGuides.push({ year: y, leftPct: lPct, isCurrent: y === nowYear });
+        const yBand = rulerTrack.createDiv({
+          cls: "fc-zgraph-gantt-year-band" + (y === nowYear ? " is-current" : ""),
+        });
+        if (yBand.style) {
+          yBand.style.left = `${lPct.toFixed(3)}%`;
+          yBand.style.width = `${segW.toFixed(3)}%`;
+        }
+        yBand.createSpan({ text: String(y), cls: "fc-zgraph-gantt-year-lbl" });
+      }
+
+      // Secondary ticks (Weeks vs Months vs Quarters)
+      const ticksWrap = rulerTrack.createDiv({ cls: "fc-zgraph-gantt-ticks" });
+      if (ganttZoom === "weeks") {
+        const stepMs = 7 * dayMs;
+        let cur = minMs;
+        let guard = 0;
+        while (cur < maxMs && guard++ < 96) {
+          const td = new Date(cur);
+          const lbl = `${String(td.getUTCDate()).padStart(2, "0")}.${String(td.getUTCMonth() + 1).padStart(2, "0")}`;
+          const tk = ticksWrap.createSpan({ text: lbl, cls: "fc-zgraph-gantt-tick" });
+          if (tk.style) tk.style.left = `${xPct(cur).toFixed(3)}%`;
+          cur += stepMs;
+        }
+      } else {
+        const monthStep = ganttZoom === "years" ? 3 : 1;
+        let cy = minYear;
+        let cm = new Date(minMs).getUTCMonth();
+        let guard = 0;
+        while (guard++ < 96) {
+          const curMs = Date.UTC(cy, cm, 1);
+          if (curMs >= maxMs) break;
+          const tk = ticksWrap.createSpan({ text: SHORT_MONTHS_UK[cm] || String(cm + 1), cls: "fc-zgraph-gantt-tick" });
+          if (tk.style) tk.style.left = `${xPct(curMs).toFixed(3)}%`;
+          cm += monthStep;
+          while (cm >= 12) { cm -= 12; cy++; }
+        }
+      }
+
+      const todayMarker = rulerTrack.createDiv({ cls: "fc-zgraph-gantt-today-flag", text: "Сьогодні" });
+      if (todayMarker.style) todayMarker.style.left = `${todayPct.toFixed(3)}%`;
+
+      const scrollToToday = (smooth = true) => {
+        const targetX = Math.max(0, Math.round((todayPct / 100) * trackPx - 260));
+        scrollWrap.scrollLeft = targetX;
+        if (typeof scrollWrap.scrollTo === "function") {
+          scrollWrap.scrollTo({ left: targetX, behavior: smooth ? "smooth" : "auto" });
+        }
+      };
+      todayBtn.addEventListener("click", () => scrollToToday(true));
+
+      const dateFmt = new Intl.DateTimeFormat("uk-UA", { day: "2-digit", month: "short", year: "2-digit" });
+      const fmtSpan = (sMs, eMs) => {
+        const sTxt = dateFmt.format(new Date(sMs));
+        if (!Number.isFinite(eMs) || Math.abs(eMs - sMs) < dayMs) return sTxt;
+        return `${sTxt} → ${dateFmt.format(new Date(eMs))}`;
+      };
+
+      const appendGuidesToTrack = (trackEl) => {
+        for (const yg of yearGuides) {
+          const line = trackEl.createSpan({ cls: "fc-zgraph-gantt-year-line" + (yg.isCurrent ? " is-current" : "") });
+          if (line.style) line.style.left = `${yg.leftPct.toFixed(3)}%`;
+        }
+        const tLine = trackEl.createSpan({ cls: "fc-zgraph-gantt-today-line" });
+        if (tLine.style) tLine.style.left = `${todayPct.toFixed(3)}%`;
+      };
+
+      const renderNoteRow = (note, color) => {
+        const row = grid.createDiv({
+          cls: "fc-zgraph-gantt-row" + (selectedNodeId === note.id ? " is-selected" : ""),
+          attr: { "data-fc-gantt-note": note.path },
+        });
+        row.style?.setProperty?.("--fc-z-color", color);
+        const lCell = row.createDiv({ cls: "fc-zgraph-gantt-label-cell" });
+        const selectBtn = lCell.createEl("button", {
+          cls: "fc-zgraph-gantt-note-btn",
+          attr: { type: "button", title: `${note.title} · ${note.path}` },
+        });
+        selectBtn.createSpan({ text: note.title, cls: "fc-zgraph-gantt-note-title" });
+        const metaParts = [note.dateInfo?.label, note.statusLabel].filter(Boolean);
+        if (metaParts.length) selectBtn.createSpan({ text: metaParts.join(" · "), cls: "fc-zgraph-gantt-note-meta" });
+        selectBtn.addEventListener("click", () => {
+          selectedNodeId = note.id;
+          drawerOpen = true;
+          renderDrawer();
+          renderGanttView();
+        });
+        selectBtn.addEventListener("dblclick", () => void openVaultPath(note.path));
+
+        const openIconBtn = lCell.createEl("button", {
+          cls: "fc-zgraph-gantt-open-btn",
+          attr: { type: "button", "aria-label": `Відкрити ${note.title}`, title: "Відкрити нотатку" },
+        });
+        const oSvg = fcGraphIconSvg("open", doc, 12);
+        if (oSvg) openIconBtn.append(oSvg); else openIconBtn.setText("↗");
+        openIconBtn.addEventListener("click", () => void openVaultPath(note.path));
+
+        const track = row.createDiv({ cls: "fc-zgraph-gantt-track" });
+        appendGuidesToTrack(track);
+
+        const endMs = Number.isFinite(note.endMs) ? note.endMs : note.startMs;
+        const barW = wPct(note.startMs, endMs);
+        const bar = track.createEl("button", {
+          cls: "fc-zgraph-gantt-bar" + (selectedNodeId === note.id ? " is-selected" : ""),
+          attr: {
+            type: "button",
+            title: `${note.title}\n${fmtSpan(note.startMs, endMs)}${note.projectLabel ? `\nПроєкт: ${note.projectLabel}` : ""}`,
+          },
+        });
+        if (bar.style) {
+          bar.style.left = `${xPct(note.startMs).toFixed(3)}%`;
+          bar.style.width = `${barW.toFixed(3)}%`;
+        }
+        if (barW >= 4.5) {
+          bar.createSpan({ text: note.title, cls: "fc-zgraph-gantt-bar-lbl" });
+        }
+        bar.addEventListener("click", () => {
+          selectedNodeId = note.id;
+          drawerOpen = true;
+          renderDrawer();
+          renderGanttView();
+        });
+        bar.addEventListener("dblclick", () => void openVaultPath(note.path));
+
+        if (Array.isArray(note.milestones) && note.milestones.length > 1) {
+          for (const m of note.milestones.slice(0, 5)) {
+            const ms = Number(m?.ms);
+            if (!Number.isFinite(ms)) continue;
+            const dEl = track.createSpan({
+              cls: "fc-zgraph-gantt-milestone",
+              attr: { title: `${m.source || "Етап"}: ${m.label}` },
+            });
+            if (dEl.style) dEl.style.left = `${xPct(ms).toFixed(3)}%`;
+          }
+        }
+      };
+
+      // 3. Categorization Lanes & Sub-Project Rollups
+      const byZoneDated = new Map();
+      for (const n of dated) {
+        if (!byZoneDated.has(n.zoneId)) byZoneDated.set(n.zoneId, []);
+        byZoneDated.get(n.zoneId).push(n);
+      }
+
+      let renderedDatedLanes = 0;
+      for (const z of activeZonesForGantt) {
+        const zNotes = (byZoneDated.get(z.id) || []).slice().sort((a, b) => a.startMs - b.startMs || a.title.localeCompare(b.title, "uk"));
+        if (!zNotes.length) continue;
+        renderedDatedLanes++;
+        const collapsed = ganttCollapsedLanes.has(z.id);
+        let zMin = Infinity, zMax = -Infinity;
+        for (const n of zNotes) {
+          if (n.startMs < zMin) zMin = n.startMs;
+          const e = Number.isFinite(n.endMs) ? n.endMs : n.startMs;
+          if (e > zMax) zMax = e;
+        }
+
+        const laneRow = grid.createDiv({
+          cls: "fc-zgraph-gantt-lane-row" + (collapsed ? " is-collapsed" : ""),
+          attr: { "data-fc-gantt-lane": z.id },
+        });
+        laneRow.style?.setProperty?.("--fc-z-color", z.color);
+        const laneBtn = laneRow.createEl("button", {
+          cls: "fc-zgraph-gantt-lane-btn",
+          attr: { type: "button", "aria-expanded": String(!collapsed) },
+        });
+        laneBtn.createSpan({ text: collapsed ? "▸" : "▾", cls: "fc-zgraph-gantt-chev" });
+        laneBtn.createSpan({ cls: "fc-zgraph-zone-dot" });
+        laneBtn.createSpan({ text: z.label, cls: "fc-zgraph-gantt-lane-title" });
+        laneBtn.createSpan({ text: String(zNotes.length), cls: "fc-zgraph-gantt-lane-cnt" });
+        laneBtn.addEventListener("click", () => {
+          if (ganttCollapsedLanes.has(z.id)) ganttCollapsedLanes.delete(z.id);
+          else ganttCollapsedLanes.add(z.id);
+          renderGanttView();
+        });
+
+        const laneTrack = laneRow.createDiv({ cls: "fc-zgraph-gantt-track" });
+        appendGuidesToTrack(laneTrack);
+        const laneBar = laneTrack.createDiv({
+          cls: "fc-zgraph-gantt-lane-bar",
+          attr: { title: `${z.label}: ${fmtSpan(zMin, zMax)}` },
+        });
+        if (laneBar.style) {
+          laneBar.style.left = `${xPct(zMin).toFixed(3)}%`;
+          laneBar.style.width = `${wPct(zMin, zMax).toFixed(3)}%`;
+        }
+        laneBar.createSpan({ text: fmtSpan(zMin, zMax), cls: "fc-zgraph-gantt-lane-span" });
+
+        if (collapsed) continue;
+
+        const rowCap = ganttExpandedLanes.has(z.id) ? zNotes.length : 40;
+        const projMap = new Map();
+        for (const n of zNotes) {
+          const pKey = n.projectKey || "__general__";
+          if (!projMap.has(pKey)) {
+            projMap.set(pKey, { key: pKey, label: n.projectLabel || "Загальний потік", items: [], minMs: Infinity, maxMs: -Infinity });
+          }
+          const grp = projMap.get(pKey);
+          grp.items.push(n);
+          if (n.startMs < grp.minMs) grp.minMs = n.startMs;
+          const e = Number.isFinite(n.endMs) ? n.endMs : n.startMs;
+          if (e > grp.maxMs) grp.maxMs = e;
+        }
+        const projectGroups = [...projMap.values()].sort((a, b) => a.minMs - b.minMs);
+        const showProjects = (projectGroupedModes && projectGroups.length >= 2)
+          || (!projectGroupedModes && projectGroups.length >= 3 && zNotes.length >= 8);
+
+        let emitted = 0;
+        if (showProjects) {
+          for (const proj of projectGroups) {
+            if (emitted >= rowCap) break;
+            const pRow = grid.createDiv({ cls: "fc-zgraph-gantt-project-row" });
+            pRow.style?.setProperty?.("--fc-z-color", z.color);
+            const pCell = pRow.createDiv({ cls: "fc-zgraph-gantt-project-cell" });
+            pCell.createSpan({ text: proj.label, cls: "fc-zgraph-gantt-project-title", attr: { title: proj.label } });
+            pCell.createSpan({ text: String(proj.items.length), cls: "fc-zgraph-gantt-project-cnt" });
+            const pTrack = pRow.createDiv({ cls: "fc-zgraph-gantt-track" });
+            appendGuidesToTrack(pTrack);
+            const pBar = pTrack.createDiv({ cls: "fc-zgraph-gantt-project-bar", attr: { title: `${proj.label}: ${fmtSpan(proj.minMs, proj.maxMs)}` } });
+            if (pBar.style) {
+              pBar.style.left = `${xPct(proj.minMs).toFixed(3)}%`;
+              pBar.style.width = `${wPct(proj.minMs, proj.maxMs).toFixed(3)}%`;
+            }
+            for (const item of proj.items) {
+              if (emitted >= rowCap) break;
+              renderNoteRow(item, z.color);
+              emitted++;
+            }
+          }
+        } else {
+          for (const item of zNotes.slice(0, rowCap)) {
+            renderNoteRow(item, z.color);
+          }
+        }
+
+        if (zNotes.length > rowCap) {
+          const moreRow = grid.createDiv({ cls: "fc-zgraph-gantt-more-row" });
+          const moreBtn = moreRow.createEl("button", {
+            text: `Показати ще ${zNotes.length - rowCap} у «${z.label}»`,
+            cls: "fc-zgraph-drawer-more",
+            attr: { type: "button", "data-fc-gantt-expand-lane": z.id },
+          });
+          moreBtn.addEventListener("click", () => {
+            ganttExpandedLanes.add(z.id);
+            renderGanttView();
+          });
+        }
+      }
+
+      if (!renderedDatedLanes) {
+        grid.createDiv({
+          text: "Немає нотаток із датами за активними фільтрами.",
+          cls: "fc-zgraph-gantt-empty",
+        });
+      }
+
+      if (undated.length && (ganttShowUndated || !renderedDatedLanes)) {
+        const uBox = ganttEl.createDiv({ cls: "fc-zgraph-gantt-undated" });
+        uBox.createDiv({ text: `Постійна база без дати (${undated.length})`, cls: "fc-zgraph-gantt-undated-title" });
+        const uGrid = uBox.createDiv({ cls: "fc-zgraph-gantt-undated-grid" });
+        for (const u of undated.slice(0, 60)) {
+          const chip = uGrid.createEl("button", {
+            text: u.title,
+            cls: "fc-zgraph-gantt-undated-chip" + (selectedNodeId === u.id ? " is-selected" : ""),
+            attr: { type: "button", title: u.path },
+          });
+          chip.addEventListener("click", () => {
+            selectedNodeId = u.id;
+            drawerOpen = true;
+            renderDrawer();
+            renderGanttView();
+          });
+        }
+      }
+
+      if (ganttScrollTodayNext) {
+        ganttScrollTodayNext = false;
+        scrollToToday(false);
+      }
+    }
 
     const syncDateUi = () => {
       for (const [k, b] of datePresetBtns) {
@@ -10777,7 +11991,31 @@ module.exports = class FlightClubMarkdown extends Plugin {
       }
       canvasEl.setAttribute("aria-label", `Граф FlightClub: ${model.totalNotesCount} нотаток, ${model.edges.length} зв’язків`);
       renderDrawer();
-      scheduleRender();
+      if (physicsLayout === "gantt") renderGanttView();
+      else scheduleRender();
+    };
+
+    const syncLayoutUi = () => {
+      wrap.setAttribute("data-fc-physics-layout", physicsLayout);
+      const isGantt = physicsLayout === "gantt";
+      for (const [lKey, lBtn] of layoutModeBtns) {
+        const active = lKey === physicsLayout;
+        lBtn.classList.toggle("is-active", active);
+        lBtn.setAttribute("aria-pressed", String(active));
+      }
+      const nextIdx = (GRAPH_LAYOUT_ORDER.indexOf(physicsLayout) + 1) % GRAPH_LAYOUT_ORDER.length;
+      const nextMeta = GRAPH_LAYOUT_META[GRAPH_LAYOUT_ORDER[nextIdx]];
+      const curMeta = GRAPH_LAYOUT_META[physicsLayout] || GRAPH_LAYOUT_META.obsidian;
+      layoutToggleBtn.setAttribute("data-fc-layout-current", physicsLayout);
+      layoutToggleBtn.setAttribute("aria-pressed", String(physicsLayout === "obsidian"));
+      layoutToggleBtn.title = `Вигляд «${curMeta.label}» · Натисніть для «${nextMeta.label}»`;
+      canvasEl.hidden = isGantt;
+      controls.hidden = isGantt;
+      watermark.hidden = isGantt;
+      ganttEl.hidden = !isGantt;
+      physicsPanel.hidden = isGantt;
+      if (isGantt) tipEl.hidden = true;
+      updateZoomReadout();
     };
 
     const syncModeUi = () => {
@@ -10813,7 +12051,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
       btn.addEventListener("click", () => switchMode(key));
     }
 
-    const rebuild = ({ preserveViewport = false } = {}) => {
+    const rebuild = ({ preserveViewport = false, prevPositions = null } = {}) => {
       physicsAlpha = 0;
       physicsFrame = 0;
       hoveredId = null;
@@ -10830,6 +12068,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
         monthBucket,
         connectedOnly,
         physicsLayout,
+        prevPositions,
         forces,
       });
       // Deterministic gentle curve direction per edge
@@ -10839,7 +12078,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
 
       const activeFilters = Number(Boolean(activeTag)) + Number(datePreset !== "all" || Boolean(monthBucket) || Boolean(dateFrom) || Boolean(dateTo))
         + Number(useTagNodes) + Number(connectedOnly);
-      filterLabel.setText(activeFilters ? `Фільтри · ${activeFilters}` : "Фільтри");
+      filterLabelText.setText(activeFilters ? `Фільтри · ${activeFilters}` : "Фільтри");
       resetFiltersBtn.hidden = activeFilters === 0;
       removeNativeBtn.hidden = !this.graphPreset;
 
@@ -10949,22 +12188,41 @@ module.exports = class FlightClubMarkdown extends Plugin {
       }
 
       applyFilters();
-      if (!preserveViewport) fitView(activeZone, { immediate: true });
-      else scheduleRender();
-      if (!prefersReducedMotion() && model?.nodes?.length) {
-        physicsAlpha = 0.75;
-        scheduleRender();
+      if (physicsLayout === "gantt") {
+        physicsAlpha = 0;
+      } else {
+        if (!preserveViewport) fitView(activeZone, { immediate: true });
+        else scheduleRender();
+        if (!prefersReducedMotion() && model?.nodes?.length) {
+          physicsAlpha = physicsLayout === "roadmap" ? 0.55 : 0.75;
+          scheduleRender();
+        }
       }
     };
 
+    const setPhysicsLayout = (nextLayout) => {
+      const target = GRAPH_LAYOUT_ORDER.includes(nextLayout) ? nextLayout : "obsidian";
+      if (target === physicsLayout && model) return;
+      const prevPositions = new Map();
+      if (model?.nodes?.length) {
+        for (const n of model.nodes) {
+          prevPositions.set(n.id, { x: n.x, y: n.y, vx: n.vx, vy: n.vy });
+        }
+      }
+      physicsLayout = target;
+      ganttScrollTodayNext = target === "gantt";
+      syncLayoutUi();
+      rebuild({ prevPositions, preserveViewport: false });
+    };
+
     // Toolbar & Filter interactions
+    for (const [lKey, lBtn] of layoutModeBtns) {
+      lBtn.addEventListener("click", () => setPhysicsLayout(lKey));
+    }
     layoutToggleBtn.addEventListener("click", () => {
-      physicsLayout = physicsLayout === "obsidian" ? "zones" : "obsidian";
-      const isFree = physicsLayout === "obsidian";
-      layoutToggleBtn.setText(isFree ? "🌌 Фізика" : "🗂️ Зони");
-      layoutToggleBtn.classList.toggle("is-active", isFree);
-      layoutToggleBtn.setAttribute("aria-pressed", String(isFree));
-      rebuild();
+      const idx = GRAPH_LAYOUT_ORDER.indexOf(physicsLayout);
+      const next = GRAPH_LAYOUT_ORDER[(idx + 1) % GRAPH_LAYOUT_ORDER.length];
+      setPhysicsLayout(next);
     });
     tagNodesToggle.addEventListener("click", () => {
       if (mode === "topics") topicsTagNodesOverride = !effectiveIncludeTagNodes();
@@ -11384,6 +12642,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
     }
 
     syncModeUi();
+    syncLayoutUi();
     rebuild();
     void this.loadGraphEntityVisuals().then((updated) => {
       if (updated && !destroyed) rebuild({ preserveViewport: true });
@@ -11392,6 +12651,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
     const controller = {
       rebuild,
       setMode: switchMode,
+      setPhysicsLayout,
       getMode: () => mode,
       focusZone: (zid) => {
         activeZone = activeZone === zid ? null : zid;
@@ -11406,11 +12666,13 @@ module.exports = class FlightClubMarkdown extends Plugin {
           focusNode(selectedNodeId);
         }
         renderDrawer();
-        scheduleRender();
+        if (physicsLayout === "gantt") renderGanttView();
+        else scheduleRender();
       },
       getSnapshot: () => ({
         mode,
         physicsLayout,
+        ganttZoom,
         activeZone,
         activeTag,
         includeTagNodes: effectiveIncludeTagNodes(),
@@ -11425,6 +12687,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
         zones: model?.zones || [],
         nodes: model?.nodes || [],
         edges: model?.edges || [],
+        roadmapMeta: model?.roadmapMeta || null,
         matchedIds: [...matchedIds],
         filteredNotes: getFilteredNotes(),
         camera: { tx, ty, scale, targetTx, targetTy, targetScale },
@@ -11626,16 +12889,18 @@ module.exports = class FlightClubMarkdown extends Plugin {
         const pairing = hero.createDiv({ cls: "fc-pairing-progress" });
         const pending = this.pendingPair;
         pairing.createEl("p", { text: {
-          waiting: "Увійдіть на сайт і натисніть «Підтвердити цей Obsidian». Запит діє 5 хвилин.",
+          waiting: "Увійдіть на сайт у звичайному браузері (роль не нижче MINIADMIN / ADMIN) і натисніть «Підтвердити цей Obsidian». Запит діє 5 хвилин.",
           offline: "Сайт тимчасово недоступний. Підключення перевіриться автоматично після відновлення зв’язку.",
-          denied: "Сайт відхилив перевірку. Відкрийте підтвердження й перевірте доступ акаунта.",
+          denied: "Сайт відхилив перевірку. Потрібен доступ команди мінімум MINIADMIN (інструктор) або ADMIN / ADMAX.",
           update: "Для цього підключення потрібно оновити плагін.",
           storage: "Доступ підтверджено. Натисніть «Перевірити зараз», щоб повторити збереження.",
           saving: "Зберігаємо підключення в Obsidian…",
-        }[pending.state] || "Відкрийте підтвердження на сайті.", attr: { role: "status" } });
+        }[pending.state] || "Відкрийте підтвердження у браузері.", attr: { role: "status" } });
         const actions = pairing.createDiv({ cls: "fc-deck-grid" });
-        actions.createEl("a", { text: "Відкрити підтвердження", cls: "fc-deck-btn",
-          attr: { href: pending.url, target: "_blank", rel: "noopener noreferrer" } });
+        const openBtn = actions.createEl("button", { text: "Відкрити у браузері", cls: "mod-cta fc-deck-btn", attr: { type: "button" } });
+        openBtn.addEventListener("click", () => this.openSite(pending.url, typeof window !== "undefined" ? window : undefined, { external: true }));
+        const copyLinkBtn = actions.createEl("button", { text: "📋 Копіювати посилання", cls: "fc-deck-btn", attr: { type: "button" } });
+        copyLinkBtn.addEventListener("click", () => void this.copyTextToClipboard(pending.url, "Посилання скопійовано — відкрийте його у Chrome / Edge / Safari"));
         const recheck = actions.createEl("button", {
           text: "Перевірити зараз", cls: "fc-deck-btn", attr: { type: "button" },
         });
@@ -11646,6 +12911,12 @@ module.exports = class FlightClubMarkdown extends Plugin {
         cancel.addEventListener("click", () => this.cancelPairing());
       } else if (this.pairMessage) {
         hero.createEl("p", { text: this.pairMessage, cls: "fc-deck-sub", attr: { role: "status" } });
+      }
+      if (!this.pendingPair && this.accountVerified && !this.vaultConfig.pairedCanSync && !this.vaultConfig.pairedReadDrive && !this.vaultConfig.pairedCanEdit && !this.accountIsAdmax) {
+        const warn = hero.createDiv({ cls: "fc-conflict-card", attr: { role: "status" } });
+        warn.createEl("p", {
+          text: `Роль «${this.vaultConfig.pairedRole || "Учасник"}» не має доступу до синхронізації FlightClub Obsidian. Потрібен доступ не нижче MINIADMIN (інструктор) або ADMIN / ADMAX — зверніться до адміністратора або керівника осередку.`,
+        });
       }
 
       if (platform) {
@@ -12871,7 +14142,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
       } else if (activeTab === "graph") {
         this.renderGraphInsights(bodySlot, { expanded: false });
       } else if (activeTab === "history") {
-        this.renderHistoryPanel(bodySlot.createDiv({ cls: "fc-deck-card" }), file, activeLink);
+        this.renderHistoryPanel(bodySlot.createDiv({ cls: "fc-deck-card" }), file, activeLink, { showTitle: false });
       } else if (activeTab === "pages") {
         // Pages /m/ Browser & 1-Click Sync Tab
         const pagesCard = bodySlot.createDiv({ cls: "fc-deck-card" });
@@ -14250,8 +15521,11 @@ module.exports = class FlightClubMarkdown extends Plugin {
     menu.addItem((item) => item.setTitle("📥 Завантажити всі сторінки /m/ у Vault").setIcon("download").onClick(() => void this.pullPagesFromSite()));
   }
 
-  openSite(url, host = window) {
-    host.open(url, "_blank", "noopener,noreferrer");
+  openSite(url, host = typeof window !== "undefined" ? window : undefined, opts = {}) {
+    if (opts?.external && !Platform?.isMobileApp && typeof fcOpenExternalBrowser === "function" && fcOpenExternalBrowser(url)) {
+      return;
+    }
+    host?.open?.(url, "_blank", "noopener,noreferrer");
   }
 
   async copyLink(file) {
@@ -14295,11 +15569,21 @@ module.exports = class FlightClubMarkdown extends Plugin {
         return false;
       }
       const payload = response.json;
+      if (payload.restricted === true) {
+        this.accountRestricted = true;
+        this.remoteCatalog = [];
+        if (payload.viewer?.roleLabel) this.vaultConfig.pairedRole = payload.viewer.roleLabel;
+        if ("accessTier" in (payload.viewer || {})) this.vaultConfig.pairedAccessTier = payload.viewer.accessTier || null;
+        this.refreshDockViews();
+        return true;
+      }
+      this.accountRestricted = false;
       if (payload.viewer) {
         if (payload.viewer.userId) this.vaultConfig.pairedUserId = payload.viewer.userId;
         if (payload.viewer.displayName) this.vaultConfig.pairedUser = payload.viewer.displayName;
         if (payload.viewer.roleLabel) this.vaultConfig.pairedRole = payload.viewer.roleLabel;
         if (payload.viewer.hubCity) this.vaultConfig.pairedHub = payload.viewer.hubCity;
+        if ("accessTier" in payload.viewer) this.vaultConfig.pairedAccessTier = payload.viewer.accessTier || null;
       }
       if (typeof payload.localVaultRoot === "string" && !this.vaultConfig.userPinnedLocalRoot) {
         this.vaultConfig.localVaultRoot = payload.localVaultRoot;
