@@ -9,7 +9,7 @@ const { MarkdownView, Menu, Modal, Notice, Platform, Plugin, TFile, TFolder, req
 /*__FC_PLUGIN_UPDATE__*/
 /*__FC_MARKDOWN_MEDIA__*/
 /*__FC_MARKDOWN_DIFF__*/
-const PLUGIN_VERSION = "1.13.0";
+const PLUGIN_VERSION = "1.14.0";
 const SHARED_FOLDER = "FlightClub Shared/";
 const SYNC_ARCHIVE_PREFIX = "FlightClub Sync Archive";
 const DEFAULT_HUB_CITIES = ["Київ", "Житомир", "Луцьк", "Львів"];
@@ -2299,12 +2299,132 @@ function appendBrandIconSvg(svgEl, doc) {
   svgEl.append(g);
 }
 
+function normalizeHubTab(tab) {
+  const clean = String(tab || "").trim().toLowerCase();
+  if (clean === "drive" || clean === "account" || clean === "sync") return "sync";
+  if (clean === "live" || clean === "entities" || clean === "history" || clean === "collab") return "collab";
+  if (clean === "pages" || clean === "graph" || clean === "publish") return "publish";
+  return "sync";
+}
+
+function fcUiIconSvg(kind, doc, size = 14) {
+  if (!doc || typeof doc.createElementNS !== "function") return null;
+  const pathsByKind = {
+    sync: ["M2.5 8a5.5 5.5 0 0 1 9.4-3.9L13.5 5.5", "M13.5 2.5v3h-3", "M13.5 8a5.5 5.5 0 0 1-9.4 3.9L2.5 10.5", "M2.5 13.5v-3h3"],
+    collab: ["M6 7.5a2.25 2.25 0 1 0 0-4.5 2.25 2.25 0 0 0 0 4.5", "M2 13.5c0-2.1 1.8-3.5 4-3.5s4 1.4 4 3.5", "M11 4.5a1.8 1.8 0 0 1 0 3.5", "M12 10.2c1.4.4 2.3 1.4 2.3 3.3"],
+    publish: ["M2.5 8l11-5-3.8 10.5-2.1-4.1z", "M7.6 9.4L13.5 3"],
+    pull: ["M8 2.5v8.5", "M4.5 7.5L8 11l3.5-3.5", "M2.5 13.5h11"],
+    push: ["M8 11V2.5", "M4.5 6L8 2.5 11.5 6", "M2.5 13.5h11"],
+    edit: ["M11.2 2.5a1.6 1.6 0 0 1 2.3 2.3L6 12.3l-3 .7.7-3z"],
+    copy: ["M5.5 5.5h7.5v8h-7.5z", "M3 10.5V3h7.5"],
+    external: ["M9.5 2.5h4v4", "M13.5 2.5L7.5 8.5", "M11.5 9.5v4h-9v-9h4"],
+    check: ["M3 8.5l3.2 3.2L13 4.8"],
+    alert: ["M8 2.2l6 10.8H2z", "M8 6.5v3.2", "M8 11.5h.01"],
+    folder: ["M2 4.2h4.2l1.4 1.6H14v7H2z"],
+    sliders: ["M2.5 4.5h11", "M2.5 11.5h11", "M5.5 2.5v4", "M10.5 9.5v4"],
+    plus: ["M8 3v10", "M3 8h10"],
+    lock: ["M4 7.5h8v6H4z", "M5.5 7.5V5.2a2.5 2.5 0 0 1 5 0v2.3"],
+    calendar: ["M2.5 4.2h11v9.3h-11z", "M5.5 2.2v2.4", "M10.5 2.2v2.4", "M2.5 7.2h11"],
+    history: ["M3.2 5.2a5.5 5.5 0 1 1-.6 4.6", "M3 2.5v3h3", "M8 5.2v3l2 1.2"],
+    graph: ["M4 8a1.6 1.6 0 1 0 0-.1", "M11.8 4a1.6 1.6 0 1 0 0-.1", "M11.8 12a1.6 1.6 0 1 0 0-.1", "M5.4 7.2l5-2.4", "M5.4 8.8l5 2.4"],
+    plugin: ["M3.2 5h9.6v7.5H3.2z", "M6 5V3.5h4V5", "M6 8.8h4"],
+    search: ["M7 11.5a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9", "M10.5 10.5L13.8 13.8"],
+    merge: ["M5 3v10", "M5 8.5c3.5 0 5-1.5 5-4.5", "M11.5 4a1.4 1.4 0 1 0-2.8 0", "M6.4 13a1.4 1.4 0 1 0-2.8 0"],
+    undo: ["M4 6.5h5.5a3.5 3.5 0 1 1 0 7H6.5", "M6 4L3.5 6.5 6 9"],
+    file: ["M4 2.2h5.5L12.5 5.2v8.6H4z", "M9.5 2.2v3h3"],
+    canvas: ["M2.5 2.5h4.5v4.5H2.5z", "M9 2.5h4.5v4.5H9z", "M2.5 9h4.5v4.5H2.5z", "M9 9h4.5v4.5H9z"],
+    base: ["M3 4.2h10v8.2H3z", "M3 7h10", "M6.8 7v5.4"],
+    eye: ["M1.8 8s2.4-4 6.2-4 6.2 4 6.2 4-2.4 4-6.2 4-6.2-4-6.2-4z", "M8 9.6a1.6 1.6 0 1 0 0-3.2 1.6 1.6 0 0 0 0 3.2"],
+    key: ["M5.5 10.5a3 3 0 1 1 2.4-4.8L13.5 5.7v2h-1.8v1.8h-2", "M5.5 8.2h.01"],
+  };
+  const paths = pathsByKind[kind] || pathsByKind.file;
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = doc.createElementNS(ns, "svg");
+  svg.setAttribute("class", "fc-ui-icon");
+  svg.setAttribute("width", String(size));
+  svg.setAttribute("height", String(size));
+  svg.setAttribute("viewBox", "0 0 16 16");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "1.5");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+  svg.setAttribute("aria-hidden", "true");
+  for (const d of paths) {
+    const p = doc.createElementNS(ns, "path");
+    p.setAttribute("d", d);
+    svg.append(p);
+  }
+  return svg;
+}
+
+function fcAppendButton(parent, { text, icon = null, cls = "fc-deck-btn", attr = {}, spanFull = false, onClick = null } = {}) {
+  const finalCls = spanFull && !String(cls).includes("fc-span-full") ? `${cls} fc-span-full` : cls;
+  const doc = parent?.ownerDocument;
+  const hasSvgDom = Boolean(doc && typeof doc.createElementNS === "function");
+  let btn;
+  if (!hasSvgDom || !icon) {
+    btn = parent.createEl("button", { text, cls: finalCls, attr: { type: "button", ...attr } });
+  } else {
+    btn = parent.createEl("button", { cls: finalCls, attr: { type: "button", ...attr } });
+    const svg = fcUiIconSvg(icon, doc, 14);
+    if (svg) btn.append(svg);
+    btn.createSpan({ text, cls: "fc-btn-lbl" });
+  }
+  if (typeof onClick === "function") btn.addEventListener("click", onClick);
+  return btn;
+}
+
+function fcBalanceGrid(gridEl) {
+  const kids = gridEl?.children;
+  if (!kids || typeof kids.length !== "number") return;
+  const visible = [];
+  for (let i = 0; i < kids.length; i++) {
+    const ch = kids[i];
+    if (!ch || ch.hidden || (typeof ch.getAttribute === "function" && ch.getAttribute("hidden") !== null)) continue;
+    visible.push(ch);
+  }
+  const addFull = (el) => {
+    if (el.classList?.add) el.classList.add("fc-span-full");
+    else if (typeof el.className === "string" && !el.className.includes("fc-span-full")) el.className += " fc-span-full";
+    else if (el.attributes) el.attributes.class = `${el.attributes.class || ""} fc-span-full`.trim();
+  };
+  if (visible.length === 1) {
+    addFull(visible[0]);
+    return;
+  }
+  if (visible.length > 1 && visible.length % 2 === 1) {
+    const hasExplicitFull = visible.some((el) => el.classList?.contains?.("fc-span-full") || String(el.className || "").includes("fc-span-full"));
+    if (!hasExplicitFull) {
+      const firstCta = String(visible[0].className || visible[0].attributes?.class || "").includes("mod-cta");
+      addFull(firstCta ? visible[0] : visible[visible.length - 1]);
+    }
+  }
+}
+
 function secureImageUrl(value) {
   if (typeof value !== "string") return null;
   try {
     const url = new URL(value);
     return url.protocol === "https:" && !url.username && !url.password ? url.href : null;
   } catch { return null; }
+}
+
+function fcExtractInitials(rawName) {
+  const cleaned = String(rawName || "")
+    .replace(/[()[\]{}"'«».,:;!?]+/g, " ")
+    .trim();
+  if (!cleaned) return "FC";
+  const parts = cleaned
+    .split(/\s+/)
+    .map((part) => {
+      const m = /[\p{L}\p{N}]/u.exec(part);
+      return m ? m[0] : "";
+    })
+    .filter(Boolean);
+  if (parts.length >= 2) return (parts[0] + parts[1]).toUpperCase();
+  if (parts.length === 1) return cleaned.slice(0, 2).toUpperCase();
+  return "FC";
 }
 
 function buildLiveAvatarNode(doc, peer, extraClass = "") {
@@ -2320,12 +2440,11 @@ function buildLiveAvatarNode(doc, peer, extraClass = "") {
   const inner = doc.createElement("span");
   inner.className = "fc-avatar-core";
   if (isMaskedOpsec) {
-    inner.textContent = "🛡";
+    inner.textContent = "OP";
     node.append(inner);
     return node;
   }
-  const letters = name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
-  inner.textContent = letters || "FC";
+  inner.textContent = fcExtractInitials(name);
   node.append(inner);
   const url = secureImageUrl(peer?.avatarUrl);
   if (url) {
@@ -2361,11 +2480,10 @@ function addAvatar(container, peer) {
     : container.createDiv({ cls: "fc-peer-avatar" + (isMaskedOpsec ? " fc-peer-avatar-opsec" : peer?.opsec ? " is-opsec" : "") });
   if (/^#[0-9a-f]{6}$/i.test(peer.color || "")) avatar.style?.setProperty?.("--fc-peer-color", peer.color);
   if (isMaskedOpsec) {
-    avatar.createSpan({ text: "🛡", attr: { "aria-hidden": "true" } });
+    avatar.createSpan({ text: "OP", attr: { "aria-hidden": "true" } });
     return avatar;
   }
-  const letters = name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
-  avatar.createSpan({ text: letters || "FC", attr: { "aria-hidden": "true" } });
+  avatar.createSpan({ text: fcExtractInitials(name), attr: { "aria-hidden": "true" } });
   const url = secureImageUrl(peer.avatarUrl);
   if (url) {
     const photo = avatar.createEl("img", { attr: { src: url, alt: "", decoding: "async", referrerpolicy: "no-referrer" } });
@@ -2874,7 +2992,7 @@ class FlightClubDockView extends BaseItemView {
   constructor(leaf, plugin) {
     super(leaf);
     this.plugin = plugin;
-    this.activeTab = "live";
+    this.activeTab = "sync";
     this.mentionState = { kind: "all", query: "" };
     this.pagesFilterState = { query: "" };
     this.hubHost = {};
@@ -2905,7 +3023,7 @@ class FlightClubDockView extends BaseItemView {
     this.plugin.renderHubInterface(root, {
       isDock: true, entering: this.entering, activeTab: this.activeTab, mentionState: this.mentionState,
       pagesFilterState: this.pagesFilterState, host: this.hubHost,
-      onTabChange: (tab) => { this.activeTab = tab; this.render(); },
+      onTabChange: (tab) => { this.activeTab = normalizeHubTab(tab); this.render(); },
     });
     this.entering = false;
   }
@@ -2942,9 +3060,6 @@ class FlightClubSettingTab extends BasePluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
-    this.activeTab = "live";
-    this.mentionState = { kind: "all", query: "" };
-    this.pagesFilterState = { query: "" };
     this.hubHost = {};
   }
   hide() {
@@ -2954,11 +3069,7 @@ class FlightClubSettingTab extends BasePluginSettingTab {
   display() {
     const { containerEl } = this;
     if (!containerEl) return;
-    this.plugin.renderHubInterface(containerEl, {
-      activeTab: this.activeTab, mentionState: this.mentionState,
-      pagesFilterState: this.pagesFilterState, host: this.hubHost,
-      onTabChange: (tab) => { this.activeTab = tab; this.display(); },
-    });
+    this.plugin.renderSettingsTab(containerEl, { host: this.hubHost });
   }
 }
 
@@ -4332,7 +4443,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
     try {
       const leaves = this.app.workspace?.getLeavesOfType?.(DOCK_VIEW_TYPE) || [];
       for (const leaf of leaves) {
-        if (!liveOnly || leaf.view?.activeTab === "live") leaf.view?.render?.();
+        if (!liveOnly || ["collab", "live"].includes(leaf.view?.activeTab)) leaf.view?.render?.();
       }
     } catch {}
   }
@@ -5836,26 +5947,29 @@ module.exports = class FlightClubMarkdown extends Plugin {
         : String(local.raw ?? "").replace(/\r\n?/g, "\n"))
       : String(local.body ?? "");
     const remoteText = String(remote.content ?? "").replace(/\r\n?/g, "\n");
-    const remoteLabel = isDrive ? "На Google Drive" : "На сайті";
+    const remoteLabel = isDrive ? "Версія з Google Drive" : "Версія з хмари (сайт)";
     const canvasDiff = isCanvas && typeof FC_DRIVE_SYNC.summarizeCanvasDiff === "function"
       ? FC_DRIVE_SYNC.summarizeCanvasDiff(localComparableInitial, remoteText, session.base)
       : null;
+    const mdMerged = !isCanvas && typeof session.base === "string" && localComparableInitial !== remoteText
+      ? mergeMarkdownText(session.base, localComparableInitial, remoteText)
+      : null;
     const smartMerged = isCanvas && typeof FC_DRIVE_SYNC.mergeCanvasBestEffort === "function"
       ? FC_DRIVE_SYNC.mergeCanvasBestEffort(session.base, localComparableInitial, remoteText, { prefer: "local" })
-      : null;
+      : (typeof mdMerged === "string" ? mdMerged : null);
 
     this.dialog?.close();
     const modal = new Modal(this.app);
     this.dialog = modal;
 
     modal.onOpen = () => {
-      modal.titleEl.setText(isCanvas ? "Конфлікт дошки Canvas" : "Порівняти версії Live Edit");
+      modal.titleEl.setText(isCanvas ? "Одночасні зміни дошки Canvas" : "Одночасні зміни документа");
       const wrap = modal.contentEl.createDiv({ cls: "fc-conflict-modal", attr: { "data-fc-live-conflict-modal": isCanvas ? "canvas" : "markdown" } });
       wrap.createEl("p", {
-        cls: "fc-deck-sub",
+        cls: "fc-conflict-lead",
         text: isCanvas
-          ? `У дошці «${session.file?.basename || "Canvas"}» є одночасні правки. Оберіть дію — зайві копії у папці не створюються.`
-          : `У документі «${session.file?.basename || "Нотатка"}» є одночасні правки. Оберіть, яку редакцію застосувати.`,
+          ? `Дошку «${session.file?.basename || "Canvas"}» змінили одночасно у вас і в хмарі. Оберіть потрібний варіант — зайві файли не створюються.`
+          : `Документ «${session.file?.basename || "Нотатка"}» змінили одночасно у вас і в хмарі. Нижче підсвічено різницю між версіями.`,
       });
 
       if (isCanvas && canvasDiff) {
@@ -5864,7 +5978,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
         pills.createSpan({ cls: "fc-deck-badge", text: `У вас: ${canvasDiff.localCount} карток` });
         pills.createSpan({ cls: "fc-deck-badge", text: `${remoteLabel}: ${canvasDiff.remoteCount} карток` });
         if (canvasDiff.localOnly.length) pills.createSpan({ cls: "fc-deck-badge fc-deck-badge-ok", text: `+${canvasDiff.localOnly.length} лише у вас` });
-        if (canvasDiff.remoteOnly.length) pills.createSpan({ cls: "fc-deck-badge fc-deck-badge-ok", text: `+${canvasDiff.remoteOnly.length} лише на ${isDrive ? "Drive" : "сайті"}` });
+        if (canvasDiff.remoteOnly.length) pills.createSpan({ cls: "fc-deck-badge fc-deck-badge-ok", text: `+${canvasDiff.remoteOnly.length} лише в хмарі` });
         if (canvasDiff.changedBoth.length) pills.createSpan({ cls: "fc-deck-badge fc-deck-badge-warn", text: `Змінено разом: ${canvasDiff.changedBoth.length}` });
 
         const renderBucket = (title, items, formatter) => {
@@ -5876,47 +5990,100 @@ module.exports = class FlightClubMarkdown extends Plugin {
           if (items.length > 6) ul.createEl("li", { text: `… та ще ${items.length - 6}`, cls: "fc-deck-row-meta" });
         };
 
-        renderBucket("Лише у вашій версії:", canvasDiff.localOnly, (it) => it.removedRemotely ? `${it.label} (прибрано на ${isDrive ? "Drive" : "сайті"})` : it.label);
-        renderBucket(`Лише ${remoteLabel.toLowerCase()}:`, canvasDiff.remoteOnly, (it) => it.removedLocally ? `${it.label} (прибрано у вас)` : it.label);
-        renderBucket("Одночасні зміни в картках:", canvasDiff.changedBoth, (it) => {
+        renderBucket("Додано або змінено лише у вас:", canvasDiff.localOnly, (it) => it.removedRemotely ? `${it.label} (прибрано у хмарі)` : it.label);
+        renderBucket("Додано або змінено лише у хмарі:", canvasDiff.remoteOnly, (it) => it.removedLocally ? `${it.label} (прибрано у вас)` : it.label);
+        renderBucket("Змінено в обох версіях:", canvasDiff.changedBoth, (it) => {
           const kind = it.movedOnly ? "переміщено/розмір" : "оновлено текст";
           return it.localLabel === it.remoteLabel
             ? `${it.localLabel} (${kind})`
-            : `«${it.localLabel}» ↔ «${it.remoteLabel}»`;
+            : `«${it.localLabel}» <-> «${it.remoteLabel}»`;
         });
         if (!canvasDiff.localOnly.length && !canvasDiff.remoteOnly.length && !canvasDiff.changedBoth.length) {
           summary.createEl("p", {
             cls: "fc-deck-row-meta",
-            text: `Змінилися лише зв’язки або параметри полотна (${canvasDiff.edgesDelta.localCount} ↔ ${canvasDiff.edgesDelta.remoteCount} з’єднань).`,
+            text: `Змінилися лише зв’язки або параметри полотна (${canvasDiff.edgesDelta.localCount} <-> ${canvasDiff.edgesDelta.remoteCount} з’єднань).`,
           });
         }
 
         const rawDetails = wrap.createEl("details", { cls: "fc-conflict-raw-details", attr: { "data-fc-conflict-raw": "" } });
-        rawDetails.createEl("summary", { text: "Показати технічний JSON (для перевірки)" });
+        rawDetails.createEl("summary", { text: "Показати повний вміст обох версій" });
         const panels = rawDetails.createDiv({ cls: "fc-sync-review-previews" });
-        for (const [label, body] of [["У цьому Vault", localComparableInitial], [remoteLabel, remoteText]]) {
+        for (const [label, body] of [["Моя версія", localComparableInitial], [remoteLabel, remoteText]]) {
           const panel = panels.createDiv({ cls: "fc-sync-review-preview" });
           panel.createEl("h4", { text: label });
           panel.createEl("pre").createEl("code", { text: body.slice(0, MAX_NOTE) });
         }
       } else {
-        const diffLines = typeof FC_MARKDOWN_DIFF !== "undefined" && typeof FC_MARKDOWN_DIFF.diffMarkdownLines === "function"
-          ? FC_MARKDOWN_DIFF.diffMarkdownLines(localComparableInitial, remoteText, { context: 1, maxInlinePairs: 6 })
+        const diff = typeof FC_MARKDOWN_DIFF !== "undefined" && typeof FC_MARKDOWN_DIFF.diffMarkdownLines === "function"
+          ? FC_MARKDOWN_DIFF.diffMarkdownLines(remoteText, localComparableInitial, { context: 2 })
           : null;
-        if (diffLines?.length) {
-          const diffBox = wrap.createDiv({ cls: "fc-conflict-summary" });
-          diffBox.createEl("strong", { text: "Змінені рядки:", cls: "fc-conflict-section-title" });
-          const ul = diffBox.createEl("ul", { cls: "fc-conflict-list" });
-          const changed = diffLines.filter((d) => d && d.type !== "equal").slice(0, 12);
-          for (const d of changed) {
-            const prefix = d.type === "add" ? "+ " : d.type === "remove" ? "− " : "~ ";
-            const text = d.text ?? d.newLine ?? d.oldLine ?? "";
-            ul.createEl("li", { text: `${prefix}${String(text).slice(0, 140)}`, cls: d.type === "add" ? "is-added" : d.type === "remove" ? "is-removed" : "" });
+        const summary = wrap.createDiv({ cls: "fc-conflict-summary" });
+        const pills = summary.createDiv({ cls: "fc-conflict-pills" });
+        if (diff && !diff.identical) {
+          if (diff.addedLines > 0) pills.createSpan({ text: `+${diff.addedLines} рядків у вас`, cls: "fc-history-pill is-add" });
+          if (diff.removedLines > 0) pills.createSpan({ text: `${diff.removedLines} рядків у хмарі`, cls: "fc-history-pill is-del" });
+          if (smartMerged) pills.createSpan({ text: "Можна об’єднати автоматично", cls: "fc-deck-badge fc-deck-badge-ok" });
+          const box = summary.createDiv({ cls: "fc-diff-box fc-sync-diff-box" });
+          const doc = box.ownerDocument;
+          if (doc && typeof doc.createElement === "function") {
+            const appendRow = (row) => {
+              const lineEl = doc.createElement("div");
+              lineEl.className = `fc-diff-line is-${row.kind}`;
+              const gutter = doc.createElement("span");
+              gutter.className = "fc-diff-gutter";
+              gutter.textContent = row.kind === "add" ? String(row.newLine ?? "") : row.kind === "del" ? String(row.oldLine ?? "") : String(row.newLine ?? row.oldLine ?? "");
+              const sign = doc.createElement("span");
+              sign.className = "fc-diff-sign";
+              sign.textContent = row.kind === "add" ? "+" : row.kind === "del" ? "−" : " ";
+              const code = doc.createElement("span");
+              code.className = "fc-diff-code";
+              if (Array.isArray(row.segments) && row.segments.length) {
+                for (const seg of row.segments) {
+                  if (seg.type === "add" || seg.type === "del") {
+                    const mark = doc.createElement("mark");
+                    mark.className = seg.type === "add" ? "fc-diff-mark-add" : "fc-diff-mark-del";
+                    mark.textContent = seg.text;
+                    code.append(mark);
+                  } else code.append(doc.createTextNode(seg.text));
+                }
+              } else code.textContent = row.text || " ";
+              lineEl.append(gutter, sign, code);
+              box.append(lineEl);
+            };
+            for (const block of (diff.blocks || []).slice(0, 260)) {
+              if (block.type === "collapsed") {
+                const fold = doc.createElement("button");
+                fold.type = "button";
+                fold.className = "fc-diff-fold";
+                fold.textContent = `Показати ${block.count} незмінних рядків`;
+                fold.addEventListener("click", () => {
+                  const frag = doc.createDocumentFragment();
+                  const tmp = doc.createElement("div");
+                  for (const line of block.lines || []) {
+                    const lineEl = doc.createElement("div");
+                    lineEl.className = `fc-diff-line is-${line.kind || "context"}`;
+                    const g = doc.createElement("span"); g.className = "fc-diff-gutter"; g.textContent = String(line.newLine ?? line.oldLine ?? "");
+                    const s = doc.createElement("span"); s.className = "fc-diff-sign"; s.textContent = " ";
+                    const c = doc.createElement("span"); c.className = "fc-diff-code"; c.textContent = line.text || " ";
+                    lineEl.append(g, s, c);
+                    tmp.append(lineEl);
+                  }
+                  while (tmp.firstChild) frag.appendChild(tmp.firstChild);
+                  fold.replaceWith(frag);
+                });
+                box.append(fold);
+              } else {
+                appendRow(block);
+              }
+            }
           }
-          if (!changed.length) diffBox.createEl("p", { cls: "fc-deck-row-meta", text: "Відрізняється форматування або переноси рядків." });
+        } else {
+          summary.createEl("p", { cls: "fc-deck-row-meta", text: "Текст версій збігається або відрізняється лише пробілами чи перенесенням рядків." });
         }
-        const panels = wrap.createDiv({ cls: "fc-sync-review-previews" });
-        for (const [label, body] of [["У цьому Vault", localComparableInitial], [remoteLabel, remoteText]]) {
+        const rawDetails = wrap.createEl("details", { cls: "fc-conflict-raw-details", attr: { "data-fc-conflict-raw": "" } });
+        rawDetails.createEl("summary", { text: "Показати повний текст обох версій" });
+        const panels = rawDetails.createDiv({ cls: "fc-sync-review-previews" });
+        for (const [label, body] of [["Моя версія", localComparableInitial], [remoteLabel, remoteText]]) {
           const panel = panels.createDiv({ cls: "fc-sync-review-preview" });
           panel.createEl("h4", { text: label });
           panel.createEl("pre").createEl("code", { text: body.slice(0, MAX_NOTE) });
@@ -5926,7 +6093,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
       const backupLabel = wrap.createEl("label", { cls: "fc-conflict-backup-opt" });
       const backupCheckbox = backupLabel.createEl("input", { attr: { type: "checkbox", "data-fc-conflict-backup": "" } });
       backupCheckbox.checked = false;
-      backupLabel.createSpan({ text: "Зберегти архівну копію попередньої версії у FlightClub Sync Archive (за потреби)" });
+      backupLabel.createSpan({ text: "Зберегти архівну копію попередньої версії у FlightClub Sync Archive" });
 
       const status = wrap.createEl("p", { cls: "fc-sync-status", attr: { role: "status" } });
       const actions = wrap.createDiv({ cls: "fc-conflict-actions" });
@@ -5967,28 +6134,47 @@ module.exports = class FlightClubMarkdown extends Plugin {
             return backup;
           };
 
-          if (chosenMode === "merge" && smartMerged) {
+          if (chosenMode === "merge" && typeof smartMerged === "string") {
             const backup = await maybeArchivePrevious();
             const stillOpen = () => stillValid() && this.alive && this.dialog === modal;
-            const ok = await this.applyRawDriveContent(session.file, freshLocal, smartMerged, stillOpen);
-            if (!ok) throw new Error("Не вдалося оновити полотно Canvas у пам’яті. Закрийте інші вікна редагування й повторіть.");
-            const freshHash = await contentHash(remoteText);
-            session.base = remoteText;
-            session.liveRev = remote.rev ?? session.liveRev;
-            session.revision = remote.version ?? session.revision;
-            session.sha256 = remote.sha256 ?? freshHash;
-            session.batch = {
-              opId: crypto.randomUUID(),
-              baseRev: session.liveRev,
-              revision: session.revision,
-              baseSha256: session.sha256,
-              baseContent: remoteText,
-              content: smartMerged,
-              isCanvas: true,
-            };
+            if (isDrive) {
+              const ok = await this.applyRawDriveContent(session.file, freshLocal, smartMerged, stillOpen);
+              if (!ok) throw new Error("Не вдалося оновити файл у пам’яті. Закрийте інші вікна редагування й повторіть.");
+              const freshHash = remote.sha256 ?? await contentHash(remoteText);
+              session.base = remoteText;
+              session.liveRev = remote.rev ?? session.liveRev;
+              session.revision = remote.version ?? session.revision;
+              session.sha256 = freshHash;
+              if (isCanvas) {
+                session.batch = {
+                  opId: crypto.randomUUID(),
+                  baseRev: session.liveRev,
+                  revision: session.revision,
+                  baseSha256: session.sha256,
+                  baseContent: remoteText,
+                  content: smartMerged,
+                  isCanvas: true,
+                };
+              } else {
+                const change = diffToChange(remoteText, smartMerged);
+                if (!change || smartMerged.length > MAX_NOTE) throw new Error("Об’єднаний текст перевищує ліміт Live Edit.");
+                session.batch = { opId: crypto.randomUUID(), baseRev: session.liveRev, revision: session.revision, content: smartMerged, change };
+              }
+            } else {
+              if (!await this.applyNoteContent(session.file, freshLocal, smartMerged, stillOpen)) {
+                throw new Error("Не вдалося застосувати об’єднану версію нотатки. Повторіть спробу.");
+              }
+              const change = diffToChange(remoteText, smartMerged);
+              if (!change || smartMerged.length > MAX_NOTE) throw new Error("Об’єднаний текст перевищує ліміт Live Edit.");
+              session.base = remoteText;
+              session.revision = remote.updated_at;
+              session.batch = { opId: crypto.randomUUID(), revision: remote.updated_at, content: smartMerged, change };
+            }
             session.conflict = null;
             session.pendingCanvasPage = null;
-            new Notice(backup ? `🔀 Версії Canvas об’єднано (резерв: ${backup})` : "🔀 Версії Canvas об’єднано без втрати карток.");
+            new Notice(backup
+              ? `Обидві версії об’єднано (резерв: ${backup})`
+              : isCanvas ? "Версії Canvas об’єднано без втрати карток." : "Обидві версії документа об’єднано.");
           } else if (chosenMode === "local") {
             const freshNorm = isDrive
               ? (isCanvas
@@ -5996,11 +6182,11 @@ module.exports = class FlightClubMarkdown extends Plugin {
                 : String(freshLocal.raw ?? "").replace(/\r\n?/g, "\n"))
               : String(freshLocal.body ?? "");
             if (isDrive) {
-              const freshHash = await contentHash(remoteText);
+              const freshHash = remote.sha256 ?? await contentHash(remoteText);
               session.base = remoteText;
               session.liveRev = remote.rev ?? session.liveRev;
               session.revision = remote.version ?? session.revision;
-              session.sha256 = remote.sha256 ?? freshHash;
+              session.sha256 = freshHash;
               if (isCanvas) {
                 if (freshNorm.length > MAX_NOTE) throw new Error("Розмір Canvas перевищує ліміт Live Edit.");
                 session.batch = {
@@ -6026,7 +6212,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
             }
             session.conflict = null;
             session.pendingCanvasPage = null;
-            new Notice("⬆️ Локальну версію поставлено на синхронізацію.");
+            new Notice("Вашу версію збережено й поставлено на синхронізацію.");
           } else {
             const backup = await maybeArchivePrevious();
             const stillOpen = () => stillValid() && this.alive && this.dialog === modal;
@@ -6050,7 +6236,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
               session.conflict = null;
               await this.rememberBaseline(session.file, remote);
             }
-            new Notice(backup ? `⬇️ Прийнято версію (${backup})` : `⬇️ Прийнято версію ${isDrive ? "з Google Drive" : "із сайту"}.`);
+            new Notice(backup ? `Прийнято версію з хмари (${backup})` : `Прийнято версію ${isDrive ? "з Google Drive" : "із сайту"}.`);
           }
           if (this.dialog === modal) modal.close();
         } catch (err) {
@@ -6064,33 +6250,37 @@ module.exports = class FlightClubMarkdown extends Plugin {
         }
       };
 
-      if (smartMerged) {
-        const mergeBtn = actions.createEl("button", {
-          text: "🔀 Об’єднати обидві версії",
+      const hasMerge = Boolean(typeof smartMerged === "string");
+      const localBtn = fcAppendButton(actions, {
+        text: "Зберегти мою версію",
+        icon: "push",
+        cls: (!hasMerge && defaultMode === "local" ? "mod-cta " : "") + "fc-deck-btn",
+        attr: { "data-fc-conflict-local": "" },
+        onClick: () => void applyResolution("local"),
+      });
+      actionButtons.push(localBtn);
+
+      const remoteBtn = fcAppendButton(actions, {
+        text: "Прийняти версію з хмари",
+        icon: "pull",
+        cls: (!hasMerge && defaultMode === "remote" ? "mod-cta " : "") + "fc-deck-btn",
+        attr: { "data-fc-conflict-remote": "", title: remoteLabel },
+        onClick: () => void applyResolution("remote"),
+      });
+      actionButtons.push(remoteBtn);
+
+      if (hasMerge) {
+        const mergeBtn = fcAppendButton(actions, {
+          text: "Об'єднати автоматично",
+          icon: "merge",
           cls: "mod-cta fc-deck-btn",
-          attr: { type: "button", "data-fc-conflict-merge": "" },
+          attr: { "data-fc-conflict-merge": "" },
+          onClick: () => void applyResolution("merge"),
         });
-        mergeBtn.addEventListener("click", () => void applyResolution("merge"));
         actionButtons.push(mergeBtn);
       }
 
-      const localBtn = actions.createEl("button", {
-        text: "⬆️ Залишити мою версію",
-        cls: (!smartMerged && defaultMode === "local" ? "mod-cta " : "") + "fc-deck-btn",
-        attr: { type: "button", "data-fc-conflict-local": "" },
-      });
-      localBtn.addEventListener("click", () => void applyResolution("local"));
-      actionButtons.push(localBtn);
-
-      const remoteBtn = actions.createEl("button", {
-        text: isDrive ? "⬇️ Прийняти з Google Drive" : "⬇️ Прийняти версію сайту",
-        cls: (!smartMerged && defaultMode === "remote" ? "mod-cta " : "") + "fc-deck-btn",
-        attr: { type: "button", "data-fc-conflict-remote": "" },
-      });
-      remoteBtn.addEventListener("click", () => void applyResolution("remote"));
-      actionButtons.push(remoteBtn);
-
-      const focusTarget = smartMerged ? actionButtons[0] : (defaultMode === "remote" ? remoteBtn : localBtn);
+      const focusTarget = hasMerge ? actionButtons.at(-1) : (defaultMode === "remote" ? remoteBtn : localBtn);
       focusTarget?.focus?.();
     };
 
@@ -6324,7 +6514,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
         ? rawDetail
         : cardText || (editing ? "редагує Canvas" : saved ? "зберіг Canvas" : "переглядає Canvas");
       return {
-        icon: editing ? "✏️" : selecting ? "🎨" : saved ? "💾" : "🎨",
+        icon: "",
         text: detail,
         state: editing ? "editing" : selecting ? "selecting" : saved ? "saved" : "viewing",
         editing: editing || selecting,
@@ -6344,7 +6534,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
       ? (lineNum && !/ряд\./i.test(rawDetail) && !saved ? `${rawDetail} · ряд. ${lineNum}` : rawDetail)
       : fallbackText;
     return {
-      icon: editing ? "✏️" : selecting ? "✂️" : saved ? "💾" : "👀",
+      icon: "",
       text: detail,
       state: editing ? "editing" : selecting ? "selecting" : saved ? "saved" : "viewing",
       editing: editing || selecting,
@@ -6732,7 +6922,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
         const pName = isMaskedOpsec ? "OPSEC" : String(p.name || "Учасник");
         const docTitle = r?.title || (r?.path ? r.path.split("/").pop()?.replace(/\.(?:md|markdown)$/i, "") : "Документ") || "Документ";
         const whereText = roomIsCanvas
-          ? (pAct.canvasNodeLabel ? `🎨 «${pAct.canvasNodeLabel}»` : `🎨 ${pAct.text}`)
+          ? (pAct.canvasNodeLabel ? `«${pAct.canvasNodeLabel}»` : pAct.text)
           : `${pAct.text}${pAct.heading ? ` · § ${pAct.heading}` : ""}`;
 
         const avBtn = doc.createElement("button");
@@ -6770,13 +6960,13 @@ module.exports = class FlightClubMarkdown extends Plugin {
         }
         const popDoc = doc.createElement("span");
         popDoc.className = "fc-pop-doc";
-        popDoc.textContent = `${roomIsCanvas ? "🎨" : "📄"} ${docTitle}${entry.isHere ? " (Тут)" : ""}`;
+        popDoc.textContent = `${roomIsCanvas ? "Canvas · " : ""}${docTitle}${entry.isHere ? " (Тут)" : ""}`;
         const popAct = doc.createElement("span");
         popAct.className = "fc-pop-act";
-        popAct.textContent = `${p.source === "web" ? "🌐 Сайт" : "💎 Obsidian"} · ${whereText}`;
+        popAct.textContent = `${p.source === "web" ? "Сайт" : "Obsidian"} · ${whereText}`;
         const popHint = doc.createElement("span");
         popHint.className = "fc-pop-hint";
-        popHint.textContent = entry.isHere ? "🎯 Клік — до курсора" : "🎯 Клік — телепорт у документ";
+        popHint.textContent = entry.isHere ? "Перейти до курсора" : "Перейти у документ";
         popover.append(popTop, popDoc, popAct, popHint);
         avBtn.append(popover);
 
@@ -8932,7 +9122,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
       const actions = section.createDiv({ cls: "fc-sync-metric-actions", attr: { role: "group", "aria-label": "Drive · результати синхронізації" } });
       const chips = [
         { status: "saved", text: `Завантажено · ${down}`, tone: down > 0 ? "saved" : "quiet" },
-        ...(up > 0 ? [{ status: "uploaded", text: `⬆️ Відправлено · ${up}`, tone: "uploaded" }] : []),
+        ...(up > 0 ? [{ status: "uploaded", text: `Відправлено · ${up}`, tone: "uploaded" }] : []),
         { status: "unchanged", text: `Актуальні · ${unchanged}`, tone: "ok" },
         { status: "dirty", text: `Локальні правки · ${dirty}`, tone: dirty > 0 ? "dirty" : "quiet" },
         { status: "conflict", text: `Конфлікти · ${issues}`, tone: issues > 0 ? "conflict" : "quiet" },
@@ -9025,13 +9215,13 @@ module.exports = class FlightClubMarkdown extends Plugin {
 
       const tabsBar = root.createDiv({ cls: "fc-sync-review-tabs", attr: { role: "tablist", "aria-label": "Категорії файлів" } });
       const tabDefs = [
-        ["conflict", "⚠️ Конфлікти й Архів"],
-        ["changed", "⚡ Змінені"],
-        ["dirty", "✏️ Локальні правки"],
-        ["saved", "⬇️ Завантажено"],
-        ["uploaded", "⬆️ Відправлено"],
-        ["unchanged", "✓ Актуальні"],
-        ["skipped", "☁️ Веб-файли Drive"],
+        ["conflict", "Конфлікти й Архів"],
+        ["changed", "Змінені"],
+        ["dirty", "Локальні правки"],
+        ["saved", "Завантажено"],
+        ["uploaded", "Відправлено"],
+        ["unchanged", "Актуальні"],
+        ["skipped", "Веб-файли Drive"],
         ["all", "Усі"],
       ];
       const tabButtons = new Map();
@@ -9064,22 +9254,22 @@ module.exports = class FlightClubMarkdown extends Plugin {
       const footer=root.createDiv({cls:"fc-sync-review-footer"});
       const summary=footer.createSpan({attr:{role:"status"}});
       const more=footer.createEl("button",{text:"Показати ще",attr:{type:"button"}});
-      const refresh=footer.createEl("button",{text:"🔄 Перевірити заново",attr:{type:"button"}});
+      const refresh=footer.createEl("button",{text:"Перевірити заново",attr:{type:"button"}});
       const close=footer.createEl("button",{text:"Закрити",attr:{type:"button"}});
       const statusBadgeMeta = {
-        saved: ["⬇️ Завантажено", "is-saved"],
-        uploaded: ["⬆️ Відправлено", "is-uploaded"],
-        created_remote: ["⬆️ Створено в Drive", "is-uploaded"],
-        moved_local: ["📁 Переміщено", "is-saved"],
-        moved_remote: ["📁 Переміщено в Drive", "is-uploaded"],
-        moved_folder_remote: ["📁 Папку оновлено", "is-uploaded"],
-        dirty: ["✏️ Локальні правки", "is-dirty"],
-        conflict: ["⚠️ Конфлікт", "is-conflict"],
-        archived_conflict: ["📦 Архів конфлікту", "is-conflict"],
-        archived_delete: ["🗑️ Видалено на Drive", "is-conflict"],
-        unchanged: ["✓ Актуальний", "is-ok"],
-        skipped: ["☁️ Веб-файл Drive", "is-quiet"],
-        deferred: ["⏸ Відкритий у редакторі", "is-dirty"],
+        saved: ["Завантажено", "is-saved"],
+        uploaded: ["Відправлено", "is-uploaded"],
+        created_remote: ["Створено в Drive", "is-uploaded"],
+        moved_local: ["Переміщено", "is-saved"],
+        moved_remote: ["Переміщено в Drive", "is-uploaded"],
+        moved_folder_remote: ["Папку оновлено", "is-uploaded"],
+        dirty: ["Локальні правки", "is-dirty"],
+        conflict: ["Конфлікт", "is-conflict"],
+        archived_conflict: ["Архів конфлікту", "is-conflict"],
+        archived_delete: ["Видалено на Drive", "is-conflict"],
+        unchanged: ["Актуальний", "is-ok"],
+        skipped: ["Веб-файл Drive", "is-quiet"],
+        deferred: ["Відкритий у редакторі", "is-dirty"],
       };
       const reasons={
         local_changes:"У локальному Obsidian є невідправлені правки — натисніть «⬆️ Залити в Drive» у панелі «Керування синхронізацією» або перегляньте різницю нижче.",
@@ -10604,8 +10794,8 @@ module.exports = class FlightClubMarkdown extends Plugin {
 
     const paintFilters = () => {
       for (const [id, button] of buttons) {
-        button.classList.toggle("is-active", id === state.kind);
-        button.setAttribute("aria-pressed", String(id === state.kind));
+        button.classList?.toggle?.("is-active", id === state.kind);
+        button.setAttribute?.("aria-pressed", String(id === state.kind));
       }
     };
 
@@ -10631,7 +10821,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
           attr: { type: "button", "aria-label": "Вставити " + item.label, "data-tooltip-position": "top" },
         });
         const thumbnail = button.createSpan({ cls: "fc-mention-thumbnail", attr: { "aria-hidden": "true", "data-kind": item.kind } });
-        thumbnail.createSpan({ text: item.kind === "user" ? item.label.trim().split(/\s+/).slice(0,2).map(word => word[0]).join("").toUpperCase() : "" });
+        thumbnail.createSpan({ text: item.kind === "user" ? fcExtractInitials(item.label) : "" });
         if (item.kind !== "user") {
           obsidian.setIcon?.(
             thumbnail,
@@ -13372,8 +13562,548 @@ module.exports = class FlightClubMarkdown extends Plugin {
     modal.open();
   }
 
+  openPluginSettingsTab() {
+    try {
+      this.app?.setting?.open?.();
+      this.app?.setting?.openTabById?.(this.manifest?.id || "flightclub-markdown");
+    } catch {}
+  }
+
+  renderAuthCardBlock(hostContainer, hasToken, { showSettingsShortcut = false } = {}) {
+    const authCard = hostContainer.createDiv({
+      cls: "fc-auth-card" + (hasToken ? " fc-auth-card-connected" : ""),
+    });
+    if (!hasToken) {
+      authCard.createEl("div", {
+        text: "Підключіть акаунт FlightClub, щоб синхронізувати сторінки й вставляти згадки.",
+        cls: "fc-deck-sub",
+      });
+      const loginGrid = authCard.createDiv({ cls: "fc-deck-grid" });
+      if (!this.pendingPair) {
+        fcAppendButton(loginGrid, {
+          text: "Підключити акаунт",
+          icon: "lock",
+          cls: "fc-btn-hero-login fc-span-full",
+          onClick: () => this.startPairingFlow(),
+        });
+      }
+      fcAppendButton(loginGrid, {
+        text: "Вставити код",
+        icon: "key",
+        cls: "fc-deck-btn",
+        onClick: () => this.promptManualTokenPaste(),
+      });
+      if (showSettingsShortcut) {
+        fcAppendButton(loginGrid, {
+          text: "Налаштування",
+          icon: "sliders",
+          cls: "fc-deck-btn",
+          onClick: () => this.openPluginSettingsTab(),
+        });
+      }
+      fcBalanceGrid(loginGrid);
+    } else {
+      const userRow = authCard.createDiv({ cls: "fc-auth-user-row" });
+      const userTitle = userRow.createDiv({ cls: "fc-peer-identity" });
+      addAvatar(userTitle, { name: this.vaultConfig.pairedUser, userId: this.vaultConfig.pairedUserId, avatarUrl: this.accountAvatarUrl });
+      const uInfo = userTitle.createDiv({ cls: "fc-auth-user-info" });
+      const myProfileUrl = userProfileUrl(this.vaultConfig.pairedUserId);
+      if (myProfileUrl) {
+        const myLink = uInfo.createEl("a", {
+          text: this.vaultConfig.pairedUser || "Учасник FlightClub",
+          cls: "fc-peer-name-link",
+          attr: { href: myProfileUrl, target: "_blank", rel: "noopener noreferrer" },
+        });
+        myLink.title = "Відкрити ваш профіль на сайті FlightClub";
+      } else {
+        uInfo.createEl("strong", { text: this.vaultConfig.pairedUser || "Авторизований учасник" });
+      }
+      const roleLine = this.accountVerified
+        ? [this.vaultConfig.pairedRole || "Учасник", this.vaultConfig.pairedHub || "", !this.pendingPair ? "Підключено" : ""].filter(Boolean).join(" · ")
+        : "Роль перевіряється";
+      uInfo.createEl("div", {
+        text: roleLine,
+        cls: "fc-deck-row-meta" + (this.accountVerified && !this.pendingPair ? " is-ok" : ""),
+      });
+
+      const inlineActs = userRow.createDiv({ cls: "fc-auth-actions-inline" });
+      if (!this.pendingPair) {
+        const rePairBtn = inlineActs.createEl("button", {
+          text: "Змінити",
+          cls: "fc-deck-btn fc-auth-switch-btn",
+          attr: { type: "button", title: "Підтвердити або змінити акаунт для цього Obsidian у браузері" },
+        });
+        rePairBtn.addEventListener("click", () => this.startPairingFlow());
+      }
+      if (showSettingsShortcut) {
+        const doc = inlineActs.ownerDocument;
+        const setBtn = inlineActs.createEl("button", {
+          cls: "fc-icon-btn",
+          attr: {
+            type: "button",
+            title: "Налаштування підключення та папок",
+            "aria-label": "Налаштування плагіна FlightClub",
+          },
+        });
+        const svg = doc?.createElementNS ? fcUiIconSvg("sliders", doc, 14) : null;
+        if (svg) setBtn.append(svg);
+        else setBtn.setText("Налашт.");
+        setBtn.addEventListener("click", () => this.openPluginSettingsTab());
+      }
+    }
+
+    if (this.pendingPair) {
+      const pairing = hostContainer.createDiv({ cls: "fc-pairing-progress" });
+      const pending = this.pendingPair;
+      pairing.createEl("p", { text: {
+        waiting: "Увійдіть на сайт у звичайному браузері (роль не нижче MINIADMIN / ADMIN) і натисніть «Підтвердити цей Obsidian». Запит діє 5 хвилин.",
+        offline: "Сайт тимчасово недоступний. Підключення перевіриться автоматично після відновлення зв’язку.",
+        denied: "Сайт відхилив перевірку. Потрібен доступ команди мінімум MINIADMIN (інструктор) або ADMIN / ADMAX.",
+        update: "Для цього підключення потрібно оновити плагін.",
+        storage: "Доступ підтверджено. Натисніть «Перевірити зараз», щоб повторити збереження.",
+        saving: "Зберігаємо підключення в Obsidian…",
+      }[pending.state] || "Відкрийте підтвердження у браузері.", attr: { role: "status" } });
+      const actions = pairing.createDiv({ cls: "fc-deck-grid" });
+      fcAppendButton(actions, {
+        text: "Відкрити у браузері",
+        icon: "external",
+        cls: "mod-cta fc-deck-btn",
+        onClick: () => this.openSite(pending.url, typeof window !== "undefined" ? window : undefined, { external: true }),
+      });
+      fcAppendButton(actions, {
+        text: "Копіювати посилання",
+        icon: "copy",
+        cls: "fc-deck-btn",
+        onClick: () => void this.copyTextToClipboard(pending.url, "Посилання скопійовано — відкрийте його у Chrome / Edge / Safari"),
+      });
+      const recheck = fcAppendButton(actions, {
+        text: "Перевірити зараз",
+        icon: "sync",
+        cls: "fc-deck-btn",
+        onClick: () => { void this.checkPairing(pending); },
+      });
+      recheck.disabled = pending.checking;
+      const cancel = fcAppendButton(actions, {
+        text: "Скасувати запит",
+        cls: "fc-deck-btn",
+        onClick: () => this.cancelPairing(),
+      });
+      cancel.disabled = Boolean(this.pairSaving);
+      fcBalanceGrid(actions);
+    } else if (this.pairMessage) {
+      hostContainer.createEl("p", { text: this.pairMessage, cls: "fc-deck-sub", attr: { role: "status" } });
+    }
+    if (!this.pendingPair && this.accountVerified && !this.vaultConfig.pairedCanSync && !this.vaultConfig.pairedReadDrive && !this.vaultConfig.pairedCanEdit && !this.accountIsAdmax) {
+      const warn = hostContainer.createDiv({ cls: "fc-conflict-card", attr: { role: "status" } });
+      warn.createEl("p", {
+        text: `Роль «${this.vaultConfig.pairedRole || "Учасник"}» не має доступу до синхронізації FlightClub Obsidian. Потрібен доступ не нижче MINIADMIN (інструктор) або ADMIN / ADMAX — зверніться до адміністратора або керівника осередку.`,
+      });
+    }
+  }
+
+  collectPendingSyncEntries(structSummary = null) {
+    const items = [];
+    const seen = new Set();
+    const stem = (p) => String(p || "").split("/").pop()?.replace(/\.(?:md|canvas|base)$/i, "") || p;
+
+    for (const e of this.syncActivity || []) {
+      if (!e || e.channel !== "drive" || !e.path) continue;
+      if (!["conflict", "archived_conflict", "archived_delete", "dirty", "changed"].includes(e.status) && e.reason !== "bulk_trash_confirm") continue;
+      if (seen.has(e.path)) continue;
+      seen.add(e.path);
+      const isConflict = e.status === "conflict" || e.status === "archived_conflict" || e.status === "archived_delete";
+      items.push({
+        path: e.path,
+        name: stem(e.path),
+        tone: isConflict ? "conflict" : "dirty",
+        meta: isConflict ? "Потрібна перевірка (конфлікт)" : e.status === "dirty" ? "Локальна зміна до відправки" : "Змінено у хмарі",
+        reviewStatus: isConflict ? "conflict" : e.status,
+        entry: e,
+      });
+    }
+    for (const p of this.dirtyDriveFiles || []) {
+      if (!p || seen.has(p)) continue;
+      seen.add(p);
+      items.push({
+        path: p,
+        name: stem(p),
+        tone: "dirty",
+        meta: "Локальна правка до відправки",
+        reviewStatus: "dirty",
+        entry: null,
+      });
+    }
+    for (const d of this.pendingDriveDeletes || []) {
+      const p = d?.path;
+      if (!p || seen.has(p)) continue;
+      seen.add(p);
+      items.push({
+        path: p,
+        name: stem(p),
+        tone: "dirty",
+        meta: "Видалено локально",
+        reviewStatus: "dirty",
+        entry: null,
+      });
+    }
+    for (const line of structSummary?.lines || []) {
+      items.push({
+        path: line.text || "",
+        name: line.text || "Зміна структури",
+        tone: "dirty",
+        meta: line.badge || "Переміщення / перейменування папки",
+        reviewStatus: "structure",
+        entry: null,
+      });
+    }
+    return items;
+  }
+
+  renderSettingsTab(container, opts = {}) {
+    const hasToken = Boolean(this.vaultConfig?.deviceToken);
+    const isMobileEnv = Boolean(Platform?.isMobile || Platform?.isMobileApp);
+    container.empty?.();
+    const wrap = container.createDiv({ cls: "fc-settings-wrap" });
+
+    // Explicit separation callout
+    const callout = wrap.createDiv({ cls: "fc-settings-dock-callout", attr: { "data-fc-settings-callout": "" } });
+    const calloutCopy = callout.createDiv({ cls: "fc-settings-callout-copy" });
+    calloutCopy.createEl("strong", { text: "Щоденна робота та публікація — у бічній панелі FlightClub" });
+    calloutCopy.createEl("span", { text: "У налаштуваннях зібрано одноразову прив’язку акаунта, вибір папок сховища, діагностику та гарячі клавіші. Синхронізація, колеги онлайн і публікація подій доступні в бічній панелі." });
+    fcAppendButton(callout, {
+      text: "Відкрити бічну панель",
+      icon: "external",
+      cls: "mod-cta fc-deck-btn",
+      attr: { "data-fc-open-dock-from-settings": "" },
+      onClick: () => void this.activateDockView(true),
+    });
+
+    // 1. Account Connection & Plugin Version
+    const accSection = wrap.createDiv({ cls: "fc-settings-section" });
+    accSection.createEl("h3", { cls: "fc-settings-section-title", text: "Підключення акаунта та версія плагіна" });
+    const statusLabel = this.pairSaving ? "Зберігаємо"
+      : this.pendingPair ? "Підтвердьте в браузері"
+      : hasToken && !this.accountVerified ? "Перевірте доступ"
+      : hasToken ? "Підключено" : "Не підключено";
+    const verRow = accSection.createDiv({ cls: "fc-settings-row" });
+    verRow.createSpan({ text: `Версія FlightClub Markdown: v${PLUGIN_VERSION} · ${statusLabel}`, cls: "fc-deck-sub" });
+    this.renderUpdateCard(verRow);
+    this.renderAuthCardBlock(accSection, hasToken, { showSettingsShortcut: false });
+
+    // 2. Vault Storage & Folder Bindings (preserves scopeSelect first, driveForm, folderSelect last)
+    const storageSection = wrap.createDiv({ cls: "fc-settings-section" });
+    storageSection.createEl("h3", { cls: "fc-settings-section-title", text: "Сховища FlightClub та папка Google Drive" });
+
+    const scope = this.folderSyncScope();
+    const sharedRoot = scope === "private" ? this.treeSyncState?.localRoot || "FlightClub Sync" : "FlightClub Shared";
+    storageSection.createEl("p", { cls: "fc-sync-note", text: (scope === "staff" ? "Опублікований вольт · " : "Папка ADMAX · ") + sharedRoot });
+
+    if (this.accountCanSyncPrivate) {
+      const field = storageSection.createEl("label", { cls: "fc-deck-field" });
+      field.createSpan({ text: "Сховище синхронізації" });
+      const select = field.createEl("select");
+      select.createEl("option", { text: "Опублікований вольт", attr: { value: "staff" } });
+      select.createEl("option", { text: "Приватне ADMAX", attr: { value: "private" } });
+      select.value = scope;
+      select.disabled = this.treeSyncBusy || this.driveDownloading;
+      select.addEventListener("change", async () => {
+        if (this.treeSyncBusy || this.driveDownloading) { select.value = scope; return; }
+        const previous = this.vaultConfig.folderSyncScope;
+        this.vaultConfig.folderSyncScope = select.value;
+        this.folderSyncRevision = undefined;
+        this.folderSyncOpenPending = false;
+        this.treeSyncMessage = "";
+        try { await this.persist(); }
+        catch {
+          this.vaultConfig.folderSyncScope = previous;
+          new Notice("Не вдалося зберегти налаштування.");
+        }
+        if (!this.alive) return;
+        this.renderSettingsTab(container, opts);
+        this.refreshDockViews();
+        void this.runAutomaticFolderSync();
+      });
+    }
+
+    const syncStatus = storageSection.createEl("p", { cls: "fc-sync-status", attr: { role: "status" } });
+    syncStatus.setText(this.vaultConfig.deviceToken
+      ? this.treeSyncMessage || "Перевірте, чи доступне сховище для вашого профілю."
+      : "Підключіть акаунт FlightClub, щоб перевірити сховище.");
+    const reportSync = (message) => {
+      this.treeSyncMessage = message;
+      syncStatus.setText(message);
+    };
+
+    const automaticLabel = storageSection.createEl("label", { cls: "fc-import-setting" });
+    const automatic = automaticLabel.createEl("input", { attr: { type: "checkbox" } });
+    const usingDrivePrimary = this.vaultConfig.pairedReadDrive !== false && this.vaultConfig.driveAutoSync !== false;
+    automatic.checked = scope === "staff" && usingDrivePrimary
+      ? Boolean(this.vaultConfig.folderAutoSync && this.vaultConfig.explicitStaffFolderSync)
+      : Boolean(this.vaultConfig.folderAutoSync);
+    automatic.disabled = !this.accountVerified || !this.vaultConfig.pairedCanSync;
+    automaticLabel.createSpan({ text: "Автоматично синхронізувати опубліковані файли (FlightClub Shared)" });
+    automatic.addEventListener("change", async () => {
+      const prevAuto = this.vaultConfig.folderAutoSync;
+      const prevExplicit = this.vaultConfig.explicitStaffFolderSync;
+      this.vaultConfig.folderAutoSync = automatic.checked;
+      if (scope === "staff") this.vaultConfig.explicitStaffFolderSync = automatic.checked;
+      try { await this.persist(); if (automatic.checked) { this.folderSyncDirty = true; void this.runAutomaticFolderSync(); } }
+      catch {
+        this.vaultConfig.folderAutoSync = prevAuto;
+        this.vaultConfig.explicitStaffFolderSync = prevExplicit;
+        automatic.checked = prevAuto;
+        new Notice("Не вдалося зберегти налаштування.");
+      }
+    });
+
+    const syncActions = storageSection.createDiv({ cls: "fc-deck-grid" });
+    const checkButton = fcAppendButton(syncActions, {
+      text: "Перевірити сховище",
+      icon: "sync",
+      onClick: async () => {
+        checkButton.disabled = true;
+        reportSync("Перевіряємо доступ…");
+        try {
+          const status = await this.treeSync.status();
+          if (this.alive) reportSync("Сховище доступне · " + status.files + " файлів.");
+        } catch (error) {
+          if (this.alive) reportSync(error.message);
+        } finally { checkButton.disabled = !this.accountVerified || !this.vaultConfig.pairedCanSync; }
+      },
+    });
+    const syncButton = fcAppendButton(syncActions, {
+      text: "Переглянути зміни",
+      icon: "eye",
+      onClick: () => void this.previewTreeSync(reportSync),
+    });
+    checkButton.disabled = syncButton.disabled = !this.accountVerified || !this.vaultConfig.pairedCanSync;
+    if (scope === "staff") {
+      fcAppendButton(syncActions, {
+        text: "Опублікований вольт на сайті",
+        icon: "external",
+        onClick: () => {
+          const target = new URL("/markdown?view=shared", SITE);
+          const active = this.sharedWebNote;
+          if (active?.path === this.sharedNotePath() && active.token === this.vaultConfig.deviceToken) {
+            target.searchParams.set("note", active.fileId);
+            target.searchParams.set("edit", "1");
+          }
+          this.openSite(target.href);
+        },
+      });
+    }
+    const openVaultBtn = fcAppendButton(syncActions, {
+      text: "Відкрити веб-Vault",
+      icon: "external",
+      onClick: () => this.openSite(DRIVE_VAULT_URL),
+    });
+    openVaultBtn.hidden = !this.accountIsAdmax;
+    fcBalanceGrid(syncActions);
+
+    const driveStatus = storageSection.createEl("p", { cls: "fc-sync-status", attr: { role: "status" } });
+    const describeBinding = () => this.drivePreview?.source?.name
+      ? "Папка Drive · " + this.drivePreview.source.name
+      : this.vaultConfig?.vaultRootName
+        ? "Папка Drive · " + this.vaultConfig.vaultRootName
+        : "Звірте папку Google Drive із сайтом.";
+    driveStatus.setText(describeBinding());
+
+    const driveForm = storageSection.createEl("form", { cls: "fc-sync-form" });
+    driveForm.hidden = !this.accountIsAdmax;
+    const driveField = driveForm.createEl("label", { cls: "fc-deck-field" });
+    driveField.createSpan({ text: "Нова папка Drive (посилання або ID)" });
+    const driveInput = driveField.createEl("input", {
+      attr: { type: "text", autocomplete: "off", placeholder: "https://drive.google.com/drive/folders/…" },
+    });
+    const driveActions = driveForm.createDiv({ cls: "fc-deck-grid" });
+    driveActions.createEl("button", { cls: "mod-cta fc-deck-btn", text: "Вибрати папку на сайті", attr: { type: "submit" } });
+    const verifyButton = fcAppendButton(driveActions, {
+      text: "Звірити папку",
+      icon: "sync",
+      onClick: async () => {
+        verifyButton.disabled = true;
+        driveStatus.setText("Звіряємо прив’язку…");
+        try {
+          const binding = await this.verifyDriveBinding();
+          if (this.alive) {
+            driveStatus.setText(binding ? "Папка Drive · " + (binding.rootName || binding.rootId) : "Папку Drive ще не вибрано.");
+            if (binding) void this.prepareVaultImport({ allowAutomatic: false });
+          }
+        } catch (error) {
+          if (this.alive) driveStatus.setText(error.message);
+        } finally { verifyButton.disabled = !this.vaultConfig.deviceToken; }
+      },
+    });
+    verifyButton.disabled = !this.vaultConfig.deviceToken;
+    driveInput.addEventListener("input", () => {
+      if (driveInput.hasAttribute("aria-invalid")) {
+        driveInput.removeAttribute("aria-invalid");
+        driveStatus.setText(describeBinding());
+      }
+    });
+    driveForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      if (!this.accountIsAdmax) return;
+      const input = driveInput.value.trim();
+      const rootId = parseDriveInput(input);
+      if (input && !rootId) {
+        driveInput.setAttribute("aria-invalid", "true");
+        driveStatus.setText("Вкажіть посилання на папку Google Drive або її ID.");
+        driveInput.focus();
+        return;
+      }
+      const id = crypto.randomUUID();
+      this.pendingVault = { id, expires: Date.now() + TTL };
+      const target = new URL(SITE + "/m/obsidian-sync");
+      target.searchParams.set("obsidian", id);
+      target.searchParams.set("intent", "vault");
+      if (rootId) target.searchParams.set("drive", rootId);
+      this.openSite(target.href);
+      driveStatus.setText("Підтвердьте папку у браузері, а потім поверніться в Obsidian.");
+    });
+
+    if (!isMobileEnv) {
+      const importInput = storageSection.createEl("input", { attr: { type: "file", webkitdirectory: "", multiple: "", hidden: "" } });
+      const importButton = fcAppendButton(driveActions, {
+        text: "Імпортувати з локальної папки",
+        icon: "folder",
+        onClick: () => importInput.click(),
+      });
+      importInput.addEventListener("change", async () => {
+        const selection = Array.from(importInput.files || []);
+        importInput.value = "";
+        if (!selection.length) return;
+        importButton.disabled = true;
+        driveStatus.setText("Звіряємо вибрану папку…");
+        try {
+          const sc = this.folderSyncScope();
+          const plan = await this.treeSync.previewImport(selection);
+          if (!this.alive) return;
+          driveStatus.setText("Копію перевірено. Перегляньте результат перед імпортом.");
+          this.dialogForm({
+            title: "Імпорт копії Google Drive",
+            description: "Обрана папка · " + plan.originalRoot + "\n"
+              + "Нових файлів · " + (plan.entries.length - plan.unchanged) + "\n"
+              + "Збігаються · " + plan.unchanged + "\nПропущено · " + plan.skipped
+              + "\n\nКопія з’явиться в " + this.treeSync.localRoot() + ". Після імпорту можна переглянути план синхронізації із сервером.",
+            button: "Імпортувати",
+            submit: async () => {
+              if (this.treeSyncBusy) throw new Error("Зачекайте завершення поточної синхронізації.");
+              if (this.folderSyncScope() !== sc) throw new Error("Сховище змінилося. Перегляньте імпорт ще раз.");
+              this.treeSyncBusy = true;
+              try {
+                const result = await this.treeSync.applyImport(plan);
+                if (this.alive) driveStatus.setText("Імпортовано · " + result.added + ". Збігаються · " + result.unchanged + ".");
+              } finally { this.treeSyncBusy = false; }
+            },
+          });
+        } catch (error) {
+          if (this.alive) driveStatus.setText(error.message);
+        } finally { importButton.disabled = false; }
+      });
+    }
+    fcBalanceGrid(driveActions);
+
+    for (const [key, title] of [
+      ["driveAutoSync", "Автоматичний двосторонній сінк з Google Drive"],
+      ["refreshOnStartup", "Синхронізувати при запуску Obsidian"],
+      ["importPages", "Імпортувати доступні сторінки бази знань /m/"],
+      ["importPhotos", "Завантажувати фото майна"],
+    ]) {
+      if (key === "importPhotos" && !this.vaultConfig.pairedCanEdit) continue;
+      const setting = storageSection.createEl("label", { cls: "fc-import-setting" });
+      const checkbox = setting.createEl("input", { attr: { type: "checkbox" } });
+      checkbox.checked = this.vaultConfig[key] === true;
+      setting.createSpan({ text: title });
+      checkbox.addEventListener("change", async () => {
+        const previous = this.vaultConfig[key];
+        const previousPaused = this.vaultConfig.refreshPausedByUser;
+        this.vaultConfig[key] = checkbox.checked;
+        if (key === "refreshOnStartup") this.vaultConfig.refreshPausedByUser = !checkbox.checked;
+        try {
+          await this.persist();
+          if (key === "driveAutoSync" && checkbox.checked) void this.runAutomaticDriveSync();
+          this.refreshDockViews();
+        } catch {
+          this.vaultConfig[key] = previous;
+          if (key === "refreshOnStartup") this.vaultConfig.refreshPausedByUser = previousPaused;
+          checkbox.checked = previous === true;
+          new Notice("Не вдалося зберегти параметр синхронізації.");
+        }
+      });
+    }
+
+    // folderSelect intentionally stays last <select>
+    const folderField = storageSection.createEl("label", { cls: "fc-deck-field" });
+    folderField.createSpan({ text: "Локальна папка для Google Drive Vault" });
+    const folderSelect = folderField.createEl("select");
+    for (const fPath of this.vaultFolders()) {
+      const opt = folderSelect.createEl("option", {
+        text: fPath || "Корінь Obsidian Vault",
+        attr: { value: fPath },
+      });
+      if (fPath === (this.vaultConfig.localVaultRoot || "")) opt.selected = true;
+    }
+    folderSelect.addEventListener("change", async () => {
+      const previous = this.vaultConfig.localVaultRoot;
+      const previousPin = this.vaultConfig.userPinnedLocalRoot;
+      this.vaultConfig.localVaultRoot = folderSelect.value;
+      this.vaultConfig.userPinnedLocalRoot = true;
+      folderSelect.disabled = true;
+      try {
+        await this.persist();
+        this.updateStatusBar();
+        this.refreshDockViews();
+      } catch {
+        this.vaultConfig.localVaultRoot = previous;
+        this.vaultConfig.userPinnedLocalRoot = previousPin;
+        folderSelect.value = previous;
+        new Notice("Не вдалося зберегти локальну папку. Спробуйте ще раз.");
+      } finally { folderSelect.disabled = false; }
+    });
+
+    // 3. Diagnostics & Hotkeys
+    const diagSection = wrap.createDiv({ cls: "fc-settings-section" });
+    diagSection.createEl("h3", { cls: "fc-settings-section-title", text: "Діагностика та швидкі клавіші" });
+    const diagInfo = diagSection.createDiv({ cls: "fc-sync-note" });
+    diagInfo.setText(
+      `Файлів під наглядом Drive: ${this.driveFilesCount?.() || 0} · Локальних змін у черзі: ${this.dirtyDriveFiles?.size || 0} · Командних плагінів: ${(this.teamPluginsCatalog?.plugins || []).length}`,
+    );
+    const diagGrid = diagSection.createDiv({ cls: "fc-deck-grid" });
+    fcAppendButton(diagGrid, {
+      text: "Звіт змін та конфліктів",
+      icon: "history",
+      onClick: () => this.openSyncResults("drive", "all"),
+    });
+    const accessDiagBtn = fcAppendButton(diagGrid, {
+      text: "Перевірити доступ до Drive",
+      icon: "sync",
+      onClick: () => void this.prepareVaultImport({ allowAutomatic: false }),
+    });
+    accessDiagBtn.disabled = !hasToken || Boolean(this.driveDownloading || this.previewingDrive);
+    fcBalanceGrid(diagGrid);
+
+    const hkTable = diagSection.createDiv({ cls: "fc-hotkey-table" });
+    const shortcuts = [
+      ["Відкрити бічну панель FlightClub", "Alt + Shift + F"],
+      ["Синхронізувати Google Drive зараз", "Alt + Shift + G"],
+      ["Редагувати поточну нотатку на сайті", "Alt + Shift + O"],
+      ["Підключити акаунт FlightClub", "Alt + Shift + P"],
+      ["Зберегти нотатку на сайт /m/", "Alt + Shift + S"],
+      ["Увімкнути / пауза Live Edit", "Alt + Shift + L"],
+      ["Вставити згадку сайту", "Alt + Shift + M"],
+      ["Завантажити сторінки /m/ у Vault", "Alt + Shift + D"],
+    ];
+    for (const [label, combo] of shortcuts) {
+      const r = hkTable.createDiv({ cls: "fc-hotkey-row" });
+      r.createSpan({ text: label });
+      r.createEl("kbd", { text: combo, cls: "fc-hotkey-kbd" });
+    }
+  }
+
   renderHubInterface(container, opts = {}) {
-    const activeTab = opts.activeTab || "live";
+    const rawTab = opts.activeTab || "sync";
+    const activeTab = normalizeHubTab(rawTab);
     const onTabChange = opts.onTabChange || (() => {});
     const file = opts.targetFile !== undefined ? opts.targetFile : this.activeNote?.();
     const platform = this.platformNote?.(file) || null;
@@ -13390,6 +14120,40 @@ module.exports = class FlightClubMarkdown extends Plugin {
     const activeBaseline = this.platformPublishBaseline?.(file, platform) || null;
     const liveMode = this.liveModeState ? this.liveModeState(file) : { state: "idle", label: "Очікування", hint: "", eligible: false };
     const isLive = ["live", "sending"].includes(liveMode.state);
+    const showAllOnline = this.vaultConfig?.presenceShowAll !== false;
+    const onlineRooms = hasToken && (this.workspaceActivity?.length || this.sharedPeers?.length)
+      ? this.dedupeOnlineRooms(this.workspaceActivity, this.sharedPeers, file, sharedPath)
+      : [];
+    const uniqueOnlineCount = (() => {
+      const seen = new Set();
+      for (const p of activeDocPeers) seen.add(p.userId || p.clientId || p.name);
+      if (showAllOnline) {
+        for (const r of onlineRooms) for (const p of r.peers || []) seen.add(p.userId || p.clientId || p.name);
+      }
+      if (activeLiveTarget || sharedPath) seen.add(this.vaultConfig?.pairedUserId || this.clientId || "self");
+      return seen.size;
+    })();
+    const unrevTotal = this.totalUnreviewedUpdateCount?.() || 0;
+    const structSummaryAll = hasToken ? (this.pendingStructureSummary?.() || { hasChanges: false, total: 0, lines: [], signature: "" }) : { hasChanges: false, total: 0, lines: [], signature: "" };
+    const dirtyCountAll = this.dirtyDriveFiles?.size || 0;
+    const pendingDelAll = this.pendingDriveDeletes?.length || 0;
+    const bulkTrashBlockedAll = (this.syncActivity || []).filter(e => e?.reason === "bulk_trash_confirm");
+    const conflictIssueCountAll = (this.syncTotals?.drive?.conflicts || 0) + (this.syncTotals?.drive?.archivedConflicts || 0) + (this.syncTotals?.drive?.archivedRemoteDelete || 0);
+    const syncIssueCountAll = conflictIssueCountAll + dirtyCountAll + pendingDelAll + (this.syncTotals?.drive?.dirty || 0) + (structSummaryAll.total || 0);
+    const hasSyncAlert = Boolean(this.drivePreview?.desync?.hasDesync || syncIssueCountAll > 0 || bulkTrashBlockedAll.length > 0);
+    const teamPluginsAll = this.teamPluginsCatalog?.plugins || [];
+    const missingPluginsCount = (() => {
+      if (!teamPluginsAll.length) return 0;
+      const installedIds = new Set(Object.keys(this.app?.plugins?.manifests || {}).map((id) => id.toLowerCase()));
+      const enabledIds = new Set(Array.from(this.app?.plugins?.enabledPlugins || []).map((id) => String(id).toLowerCase()));
+      let missing = 0;
+      for (const tp of teamPluginsAll) {
+        const key = String(tp.id || "").toLowerCase();
+        if (!installedIds.has(key) || (enabledIds.size && !enabledIds.has(key))) missing++;
+      }
+      return missing;
+    })();
+    const doc = container.ownerDocument || (typeof document !== "undefined" ? document : null);
 
     const host = opts.host && typeof container.querySelector === "function" ? opts.host : null;
     const savedScroll = host && typeof container.scrollTop === "number" ? container.scrollTop : 0;
@@ -13406,7 +14170,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
       if (host) {
         Object.assign(host, {
           wrap, topSlot, navSlot, bodySlot, footSlot,
-          topKey: null, navKey: null, bodyKey: null, footKey: null, lastTab: null, dropdownOpen: false,
+          topKey: null, navKey: null, bodyKey: null, footKey: null, lastTab: null,
           cleanup: () => {
             if (typeof document !== "undefined") {
               if (host.onDocPointer) document.removeEventListener("pointerdown", host.onDocPointer);
@@ -13436,6 +14200,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
       liveMode.state,
       liveMode.label,
       file?.path || "",
+      Boolean(file && isSyncArchivePath(file.path)),
       platform ? `${platform.kind}:${platform.id || ""}` : "",
       activeLink?.slug || "",
       Boolean(activeBaseline),
@@ -13444,7 +14209,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
       this.updater?.state?.release?.version || "",
       Boolean(this.checkingVersion),
       Boolean(this.updatingPlugin),
-      Boolean(activeTab === "live" && this.liveSession?.conflict),
+      Boolean(this.liveSession?.conflict),
     ]) : null;
 
     if (!host || host.topKey !== topKey) {
@@ -13452,7 +14217,6 @@ module.exports = class FlightClubMarkdown extends Plugin {
         topSlot.empty?.();
         host.topKey = topKey;
       }
-      // 1. FlightClub Compact Brand & Update Hero Header (logo left-anchored, version & animated update button right)
       const hero = topSlot.createDiv({ cls: "fc-hero-banner" });
       const heroTop = hero.createDiv({ cls: "fc-hero-top" });
       const brand = heroTop.createDiv({ cls: "fc-hero-brand" });
@@ -13469,96 +14233,30 @@ module.exports = class FlightClubMarkdown extends Plugin {
         : isLive ? liveMode.label
         : hasToken ? "Підключено" : "Не підключено";
       this.renderHeroVersion(heroTop, status, !this.pendingPair && this.accountVerified);
+      this.renderAuthCardBlock(hero, hasToken, { showSettingsShortcut: true });
 
-      // 2. Compact Account Login / Connected Profile Card
-      const authCard = hero.createDiv({
-        cls: "fc-auth-card" + (hasToken ? " fc-auth-card-connected" : ""),
-      });
-      if (!hasToken) {
-        authCard.createEl("div", {
-          text: "Підключіть акаунт FlightClub, щоб синхронізувати сторінки й вставляти згадки.",
-          cls: "fc-deck-sub",
-        });
-        if (!this.pendingPair) {
-          const loginBtn = authCard.createEl("button", {
-            text: "Підключити акаунт",
-            cls: "fc-btn-hero-login",
-            attr: { type: "button" },
-          });
-          loginBtn.addEventListener("click", () => this.startPairingFlow());
-        }
-        const manualRow = authCard.createDiv({ cls: "fc-deck-grid" });
-        const pasteBtn = manualRow.createEl("button", {
-          text: "Вставити код",
-          cls: "fc-deck-btn",
-          attr: { type: "button" },
-        });
-        pasteBtn.addEventListener("click", () => this.promptManualTokenPaste());
-      } else {
-        const userRow = authCard.createDiv({ cls: "fc-auth-user-row" });
-        const userTitle = userRow.createDiv({ cls: "fc-peer-identity" });
-        addAvatar(userTitle, { name: this.vaultConfig.pairedUser, userId: this.vaultConfig.pairedUserId, avatarUrl: this.accountAvatarUrl });
-        const uInfo = userTitle.createDiv({ cls: "fc-auth-user-info" });
-        const myProfileUrl = userProfileUrl(this.vaultConfig.pairedUserId);
-        if (myProfileUrl) {
-          const myLink = uInfo.createEl("a", {
-            text: `${this.vaultConfig.pairedUser || "Учасник FlightClub"} ↗`,
-            cls: "fc-peer-name-link",
-            attr: { href: myProfileUrl, target: "_blank", rel: "noopener noreferrer" },
-          });
-          myLink.title = "Відкрити ваш профіль на сайті FlightClub";
-        } else {
-          uInfo.createEl("strong", { text: this.vaultConfig.pairedUser || "Авторизований учасник" });
-        }
-        const roleLine = this.accountVerified
-          ? [this.vaultConfig.pairedRole || "Учасник", this.vaultConfig.pairedHub || "", !this.pendingPair ? "● Підключено" : ""].filter(Boolean).join(" · ")
-          : "Роль перевіряється";
-        uInfo.createEl("div", {
-          text: roleLine,
-          cls: "fc-deck-row-meta" + (this.accountVerified && !this.pendingPair ? " is-ok" : ""),
-        });
-
-        if (!this.pendingPair) {
-          const rePairBtn = userRow.createEl("button", {
-            text: "Змінити",
-            cls: "fc-deck-btn fc-auth-switch-btn",
-            attr: { type: "button", title: "Підтвердити або змінити акаунт для цього Obsidian у браузері" },
-          });
-          rePairBtn.addEventListener("click", () => this.startPairingFlow());
-        }
-      }
-
-      if (this.pendingPair) {
-        const pairing = hero.createDiv({ cls: "fc-pairing-progress" });
-        const pending = this.pendingPair;
-        pairing.createEl("p", { text: {
-          waiting: "Увійдіть на сайт у звичайному браузері (роль не нижче MINIADMIN / ADMIN) і натисніть «Підтвердити цей Obsidian». Запит діє 5 хвилин.",
-          offline: "Сайт тимчасово недоступний. Підключення перевіриться автоматично після відновлення зв’язку.",
-          denied: "Сайт відхилив перевірку. Потрібен доступ команди мінімум MINIADMIN (інструктор) або ADMIN / ADMAX.",
-          update: "Для цього підключення потрібно оновити плагін.",
-          storage: "Доступ підтверджено. Натисніть «Перевірити зараз», щоб повторити збереження.",
-          saving: "Зберігаємо підключення в Obsidian…",
-        }[pending.state] || "Відкрийте підтвердження у браузері.", attr: { role: "status" } });
-        const actions = pairing.createDiv({ cls: "fc-deck-grid" });
-        const openBtn = actions.createEl("button", { text: "Відкрити у браузері", cls: "mod-cta fc-deck-btn", attr: { type: "button" } });
-        openBtn.addEventListener("click", () => this.openSite(pending.url, typeof window !== "undefined" ? window : undefined, { external: true }));
-        const copyLinkBtn = actions.createEl("button", { text: "📋 Копіювати посилання", cls: "fc-deck-btn", attr: { type: "button" } });
-        copyLinkBtn.addEventListener("click", () => void this.copyTextToClipboard(pending.url, "Посилання скопійовано — відкрийте його у Chrome / Edge / Safari"));
-        const recheck = actions.createEl("button", {
-          text: "Перевірити зараз", cls: "fc-deck-btn", attr: { type: "button" },
-        });
-        recheck.disabled = pending.checking;
-        recheck.addEventListener("click", () => { void this.checkPairing(pending); });
-        const cancel = actions.createEl("button", { text: "Скасувати запит", cls: "fc-deck-btn", attr: { type: "button" } });
-        cancel.disabled = Boolean(this.pairSaving);
-        cancel.addEventListener("click", () => this.cancelPairing());
-      } else if (this.pairMessage) {
-        hero.createEl("p", { text: this.pairMessage, cls: "fc-deck-sub", attr: { role: "status" } });
-      }
-      if (!this.pendingPair && this.accountVerified && !this.vaultConfig.pairedCanSync && !this.vaultConfig.pairedReadDrive && !this.vaultConfig.pairedCanEdit && !this.accountIsAdmax) {
-        const warn = hero.createDiv({ cls: "fc-conflict-card", attr: { role: "status" } });
-        warn.createEl("p", {
-          text: `Роль «${this.vaultConfig.pairedRole || "Учасник"}» не має доступу до синхронізації FlightClub Obsidian. Потрібен доступ не нижче MINIADMIN (інструктор) або ADMIN / ADMAX — зверніться до адміністратора або керівника осередку.`,
+      if (file && isSyncArchivePath(file.path)) {
+        const archiveBanner = topSlot.createDiv({ cls: "fc-archive-banner", attr: { "data-fc-archive-banner": "" } });
+        archiveBanner.createEl("div", { cls: "fc-archive-banner-title", text: "Резервна копія із Sync Archive" });
+        archiveBanner.createEl("p", { cls: "fc-archive-banner-copy", text: "Зміни в архівній копії не синхронізуються в Live Edit та Google Drive." });
+        const liveCandidate = this.resolveLiveFileFromArchive(file);
+        fcAppendButton(archiveBanner, {
+          text: liveCandidate ? `Відкрити актуальний файл (${liveCandidate.basename})` : "Знайти актуальний файл",
+          icon: "external",
+          cls: "mod-cta fc-deck-btn",
+          onClick: async () => {
+            const target = this.resolveLiveFileFromArchive(file);
+            if (target instanceof TFile) {
+              const leaf = this.app.workspace.getLeaf?.(false) || this.app.workspace.getLeaf?.();
+              if (leaf?.openFile) await leaf.openFile(target, { active: true });
+              this.attachLiveSessionToActiveNote?.(target);
+              return;
+            }
+            const meta = this.app?.metadataCache?.getFileCache?.(file)?.frontmatter;
+            const archivedDriveId = typeof FC_YAML_PROPS !== "undefined" ? FC_YAML_PROPS.extractDriveIdFromMeta(meta) : null;
+            if (archivedDriveId) await this.openDriveFileInObsidian(archivedDriveId, null);
+            else new Notice("Актуальну копію не знайдено локально.");
+          },
         });
       }
 
@@ -13569,158 +14267,101 @@ module.exports = class FlightClubMarkdown extends Plugin {
         if (target) connection.createEl("a", { text: "Редагувати на сайті ↗", cls: "fc-note-connection-link", attr: { href: target, target: "_blank", rel: "noopener noreferrer" } });
         if (platform.id && platform.kind !== "user" && !activeBaseline &&
             this.accountVerified && this.vaultConfig.pairedCanEdit) {
-          const action = connection.createEl("button", {text:"Звірити й відправити",cls:"mod-cta fc-deck-btn",attr:{type:"button"}});
+          const action = fcAppendButton(connection, {
+            text: "Звірити й відправити",
+            icon: "push",
+            cls: "mod-cta fc-deck-btn",
+            onClick: () => this.reviewPlatformNote(file),
+          });
           action.disabled = Boolean(this.updater?.blocked() || this.driveDownloading || this.publishingDrive || this.reviewSyncBusy);
-          action.addEventListener("click", () => this.reviewPlatformNote(file));
         }
       }
 
-      if (this.liveSession?.conflict && activeTab === "live") {
+      if (this.liveSession?.conflict) {
         const isDriveConflict = this.liveSession.kind === "drive";
         const isCanvasConflict = Boolean(this.liveSession.isCanvas);
         const warning = topSlot.createDiv({ cls: "fc-conflict-card", attr: { role: "alert" } });
         warning.createEl("p", {
           text: isCanvasConflict
             ? "Дошку Canvas змінили одночасно у вас і на Google Drive."
-            : "Обидві версії мають правки в одному фрагменті.",
+            : "Є одночасні правки в поточному документі. Оберіть потрібну версію:",
         });
         const actions = warning.createDiv({ cls: "fc-deck-grid" });
-        const compareBtn = actions.createEl("button", { text: "🔀 Порівняти та вирішити", cls: "mod-cta fc-deck-btn", attr: { type: "button" } });
-        const localBtn = actions.createEl("button", { text: "⬆️ Залишити мою", cls: "fc-deck-btn", attr: { type: "button" } });
-        const remoteBtn = actions.createEl("button", { text: isDriveConflict ? "⬇️ Прийняти з Drive" : "⬇️ Прийняти із сайту", cls: "fc-deck-btn", attr: { type: "button" } });
-        compareBtn.addEventListener("click", () => void this.resolveLiveConflict("compare"));
-        localBtn.addEventListener("click", () => void this.resolveLiveConflict("local"));
-        remoteBtn.addEventListener("click", () => void this.resolveLiveConflict("remote"));
+        fcAppendButton(actions, {
+          text: "Порівняти та вирішити",
+          icon: "merge",
+          cls: "mod-cta fc-deck-btn fc-span-full",
+          onClick: () => void this.resolveLiveConflict("compare"),
+        });
+        fcAppendButton(actions, {
+          text: "Зберегти мою версію",
+          icon: "push",
+          cls: "fc-deck-btn",
+          onClick: () => void this.resolveLiveConflict("local"),
+        });
+        fcAppendButton(actions, {
+          text: isDriveConflict ? "Прийняти з хмари" : "Прийняти із сайту",
+          icon: "pull",
+          cls: "fc-deck-btn",
+          onClick: () => void this.resolveLiveConflict("remote"),
+        });
+        fcBalanceGrid(actions);
       }
     }
 
-    // 3. Clean Animated Section Dropdown (Replaces multi-row tab strip, prevents layout jumping)
-    const driveAlert = Boolean(this.drivePreview?.desync?.hasDesync);
-    const linkCount = this.links?.size || 0;
-    const sections = [
-      ["live", activeDocPeers.length ? `Учасники (${activeDocPeers.length + 1})` : "Учасники та Live", "👥", "Присутність, ролі та Live Edit", activeDocPeers.length ? String(activeDocPeers.length + 1) : ""],
-      ["entities", "Згадки", "🔗", "Люди, майно, події, сторінки та Drive", ""],
-      ["graph", "Граф і Canvas", "🕸️", "Зв’язки між нотатками", ""],
-      ["pages", "Сторінки бази знань", "📚", "Завантажені нотатки і Vault редагування", linkCount ? String(linkCount) : ""],
-      ["history", "Історія змін", "🕘", "Попередні ревізії документа", ""],
-      ["drive", "Google Drive і Опублікований вольт", "🗂️", "Синхронізація Drive та спільних папок", driveAlert ? "!" : ""],
+    // 2. 3-Tab Segmented Navigation (Equal Repeat(3, minmax(0,1fr)), Zero Ellipsis, Zero Wrap)
+    const syncBadge = syncIssueCountAll > 0 ? String(syncIssueCountAll) : hasSyncAlert ? "!" : "";
+    const collabBadge = uniqueOnlineCount > 0 ? String(uniqueOnlineCount) : unrevTotal > 0 ? String(unrevTotal) : "";
+    const pubBadge = missingPluginsCount > 0 ? String(missingPluginsCount) : "";
+    const segTabs = [
+      ["sync", "Синхронізація", "sync", syncBadge, hasSyncAlert],
+      ["collab", "Співпраця", "collab", collabBadge, false],
+      ["publish", "Публікація & Клуб", "publish", pubBadge, missingPluginsCount > 0],
     ];
-    const currentSection = sections.find(([tId]) => tId === activeTab) || sections[0];
-    const navKey = host ? JSON.stringify([
-      activeTab,
-      activeDocPeers.length,
-      linkCount,
-      driveAlert,
-    ]) : null;
+    const navKey = host ? JSON.stringify([activeTab, syncBadge, hasSyncAlert, collabBadge, pubBadge]) : null;
     if (!host || host.navKey !== navKey) {
       if (host) {
         host.cleanup?.();
         navSlot.empty?.();
         host.navKey = navKey;
       }
-      const isOpen = host ? Boolean(host.dropdownOpen) : false;
-      const picker = navSlot.createDiv({
-        cls: "fc-section-picker" + (isOpen ? " is-open" : ""),
+      const tabsWrap = navSlot.createDiv({
+        cls: "fc-seg-tabs",
+        attr: { role: "tablist", "aria-label": "Розділи FlightClub" },
       });
-      const trigger = picker.createEl("button", {
-        cls: "fc-section-trigger",
-        attr: {
-          type: "button",
-          "aria-haspopup": "listbox",
-          "aria-expanded": String(isOpen),
-          "aria-label": "Розділи панелі FlightClub",
-        },
-      });
-      trigger.createSpan({ text: currentSection[2], cls: "fc-section-trigger-icon", attr: { "aria-hidden": "true" } });
-      const triggerCopy = trigger.createDiv({ cls: "fc-section-trigger-copy" });
-      triggerCopy.createSpan({ text: currentSection[1], cls: "fc-section-trigger-title" });
-      triggerCopy.createSpan({ text: currentSection[3], cls: "fc-section-trigger-desc" });
-      const triggerBadge = currentSection[4] || (driveAlert && activeTab !== "drive" ? "!" : "");
-      if (triggerBadge) {
-        trigger.createSpan({
-          text: triggerBadge,
-          cls: "fc-section-badge" + (triggerBadge === "!" ? " is-warn" : ""),
-        });
-      }
-      const chevronWrap = trigger.createSpan({ cls: "fc-section-chevron-badge", attr: { "aria-hidden": "true" } });
-      const chevSpan = chevronWrap.createSpan({ cls: "fc-section-chevron" });
-      const chevDoc = chevSpan.ownerDocument || (typeof document !== "undefined" ? document : null);
-      if (chevDoc?.createElementNS) {
-        const chevSvg = chevDoc.createElementNS("http://www.w3.org/2000/svg", "svg");
-        chevSvg.setAttribute("width", "14");
-        chevSvg.setAttribute("height", "14");
-        chevSvg.setAttribute("viewBox", "0 0 16 16");
-        chevSvg.setAttribute("fill", "none");
-        chevSvg.setAttribute("stroke", "currentColor");
-        chevSvg.setAttribute("stroke-width", "1.8");
-        chevSvg.setAttribute("stroke-linecap", "round");
-        chevSvg.setAttribute("stroke-linejoin", "round");
-        chevSvg.setAttribute("aria-hidden", "true");
-        const chevPath = chevDoc.createElementNS("http://www.w3.org/2000/svg", "path");
-        chevPath.setAttribute("d", "M4 6l4 4 4-4");
-        chevSvg.append(chevPath);
-        chevSpan.append(chevSvg);
-      } else {
-        chevSpan.setText("▾");
-      }
-
-      const menu = picker.createDiv({
-        cls: "fc-section-menu" + (isOpen ? " is-open" : ""),
-        attr: { role: "listbox", "aria-label": "Оберіть розділ" },
-      });
-      const setDropdownOpen = (nextOpen) => {
-        if (host) host.dropdownOpen = nextOpen;
-        trigger.setAttribute("aria-expanded", String(nextOpen));
-        if (typeof picker.classList?.toggle === "function") picker.classList.toggle("is-open", nextOpen);
-        if (typeof menu.classList?.toggle === "function") menu.classList.toggle("is-open", nextOpen);
-      };
-      trigger.addEventListener("click", (e) => {
-        e?.stopPropagation?.();
-        setDropdownOpen(!(host ? host.dropdownOpen : false));
-      });
-      for (const [tId, tLabel, tIcon, tDesc, tBadge] of sections) {
+      for (const [tId, tLabel, tIcon, tBadge, badgeWarn] of segTabs) {
         const selected = activeTab === tId;
-        const opt = menu.createEl("button", {
-          cls: "fc-section-option" + (selected ? " is-active" : ""),
-          attr: { type: "button", role: "option", "aria-selected": String(selected), "data-section": tId },
+        const btn = tabsWrap.createEl("button", {
+          cls: "fc-seg-tab" + (selected ? " is-active" : ""),
+          attr: {
+            type: "button",
+            role: "tab",
+            "aria-selected": String(selected),
+            "data-fc-tab": tId,
+          },
         });
-        opt.createSpan({ text: tIcon, cls: "fc-section-option-icon", attr: { "aria-hidden": "true" } });
-        const copy = opt.createDiv({ cls: "fc-section-option-copy" });
-        copy.createSpan({ text: tLabel, cls: "fc-section-option-title" });
-        copy.createSpan({ text: tDesc, cls: "fc-section-option-desc" });
+        const iconWrap = btn.createSpan({ cls: "fc-seg-tab-icon-wrap", attr: { "aria-hidden": "true" } });
+        const svg = doc?.createElementNS ? fcUiIconSvg(tIcon, doc, 14) : null;
+        if (svg) iconWrap.append(svg);
         if (tBadge) {
-          opt.createSpan({
+          iconWrap.createSpan({
             text: tBadge,
-            cls: "fc-section-badge" + (tBadge === "!" ? " is-warn" : ""),
+            cls: "fc-seg-badge" + (badgeWarn ? " is-warn" : ""),
           });
         }
-        if (selected) {
-          opt.createSpan({ text: "✓", cls: "fc-section-option-check", attr: { "aria-hidden": "true" } });
-        }
-        opt.addEventListener("click", () => {
-          setDropdownOpen(false);
+        btn.createSpan({ text: tLabel, cls: "fc-seg-tab-label" });
+        btn.addEventListener("click", () => {
           if (tId !== activeTab) onTabChange(tId);
         });
       }
-      if (host && typeof document !== "undefined") {
-        host.onDocPointer = (event) => {
-          if (host.dropdownOpen && !picker.contains(event.target)) setDropdownOpen(false);
-        };
-        host.onDocKey = (event) => {
-          if (event.key === "Escape" && host.dropdownOpen) {
-            setDropdownOpen(false);
-            trigger.focus?.();
-          }
-        };
-        document.addEventListener("pointerdown", host.onDocPointer);
-        document.addEventListener("keydown", host.onDocKey);
-      }
     }
 
-    // 4. Tab Content Area (updates independently without touching hero/avatars or scroll)
+    // 3. Body Content per Active Tab
     const isArchiveActive = Boolean(file && isSyncArchivePath(file.path));
+    const linkCount = this.links?.size || 0;
     const bodyKey = host ? JSON.stringify([
       activeTab,
+      rawTab,
       hasToken,
       this.accountVerified,
       this.accountIsAdmax,
@@ -13732,46 +14373,56 @@ module.exports = class FlightClubMarkdown extends Plugin {
       this.resolveDriveIdForFile?.(file) || "",
       (this.hubCities || []).join(","),
       this.driveLastSummary?.at || "",
-      this.totalUnreviewedUpdateCount?.() || 0,
+      unrevTotal,
       this.updatesFilterKind || "all",
       this.counterTimeoutSec?.() ?? 30,
       Boolean(this.updatesLegendOpen),
       Boolean(this.updatesShowAll),
       this.equipmentStatusForPath?.(file?.path)?.key || "",
       this.eventPublishSignatureForFile?.(file) || "",
-      ...(activeTab === "live" ? [
-        liveMode.state, liveMode.label, Boolean(this.liveModeChanging), Boolean(this.vaultConfig.liveHeroCollapsed), Boolean(this.vaultConfig.radarCollapsed),
-        this.vaultConfig.presenceShowAll !== false,
-        this.liveRev || 0, activeLiveTarget?.key || "", sharedPath || "", sharedFileId || "",
+      ...(activeTab === "sync" ? [
+        this.folderSyncScope(),
+        Boolean(this.vaultConfig.pairedCanSync),
+        Boolean(this.vaultConfig.pairedCanEdit),
+        Boolean(this.vaultConfig.driveAutoSync !== false),
+        this.vaultConfig.vaultRootId || "",
+        this.vaultConfig.vaultRootName || "",
+        this.vaultConfig.localVaultRoot || "",
+        Boolean(this.driveDownloading),
+        Boolean(this.previewingDrive),
+        Boolean(this.reviewSyncBusy),
+        Boolean(this.publishingDrive),
+        Boolean(this.updater?.blocked?.()),
+        this.driveDownloadStatus || "",
+        this.importProgress ? `${this.importProgress.current}/${this.importProgress.total}:${this.importProgress.stage}` : "",
+        this.drivePreview ? `${this.drivePreview.available}:${this.drivePreview.matches}:${this.drivePreview.desync?.totalIssues ?? 0}` : "",
+        this.drivePreview?.source?.name || "",
+        this.syncTotals?.drive ? JSON.stringify(this.syncTotals.drive) : "",
+        structSummaryAll.signature || "",
+        dirtyCountAll,
+        pendingDelAll,
+        bulkTrashBlockedAll.length,
+        (this.recentSyncedEntries || []).map(r => r.path + ":" + r.status),
+      ] : activeTab === "collab" ? [
+        liveMode.state, liveMode.label, Boolean(this.liveModeChanging),
+        Boolean(this.vaultConfig.liveHeroCollapsed), Boolean(this.vaultConfig.radarCollapsed),
+        showAllOnline, this.liveRev || 0, activeLiveTarget?.key || "", sharedPath || "", sharedFileId || "",
         this.selfLivePeer ? [this.selfLivePeer.name, this.selfLivePeer.line, this.selfLivePeer.actionDetail, this.selfLivePeer.canvasNodeId, this.selfLivePeer.heading] : null,
         activeDocPeers.map(p => [p.clientId || p.userId, p.name, p.line, p.col, p.action, p.editing, p.actionDetail, p.source, p.color, p.canvasNodeId, p.canvasNodeLabel, p.heading]),
-        (this.workspaceActivity || []).map(r => [r.slug, r.fileId || "", r.title, (r.peers || []).map(p => [p.clientId || p.userId, p.name, p.source, p.action, p.actionDetail, p.line, p.editing, p.color, p.canvasNodeId, p.canvasNodeLabel, p.heading])]),
+        onlineRooms.map(r => [r.slug, r.fileId || "", r.title, (r.peers || []).map(p => [p.clientId || p.userId, p.name, p.source, p.action, p.actionDetail, p.line, p.editing, p.color, p.canvasNodeId, p.canvasNodeLabel, p.heading])]),
         (this.sharedPeers || []).map(p => [p.userId, p.name, p.fileId, p.path, p.editing, p.actionDetail]),
-      ] : activeTab === "pages" ? [
-        Array.from(this.links.entries()).map(([p, l]) => [p, l.slug, Boolean(l.conflict), Boolean(l.dirtyLocal), this.unreviewedUpdates?.get(p)?.count || 0]),
-      ] : activeTab === "history" ? [
         this.historyStateKey || "",
-      ] : activeTab === "drive" ? [
-        this.folderSyncScope(), Boolean(this.accountCanSyncPrivate),
-        Boolean(this.vaultConfig.pairedCanSync), Boolean(this.vaultConfig.pairedCanEdit),
-        Boolean(this.vaultConfig.folderAutoSync), Boolean(this.vaultConfig.driveAutoSync !== false),
-        this.vaultConfig.vaultRootId || "", this.vaultConfig.vaultRootName || "", this.vaultConfig.localVaultRoot || "",
-        this.treeSyncMessage || "", Boolean(this.treeSyncBusy),
-        Boolean(this.driveDownloading), Boolean(this.previewingDrive),
-        this.driveDownloadStatus || "", this.pagesDownloadStatus || "",
-        this.importProgress ? `${this.importProgress.current}/${this.importProgress.total}:${this.importProgress.stage}` : "",
-        this.drivePreview ? `${this.drivePreview.available}:${this.drivePreview.partial}:${this.drivePreview.matches}` : "",
-        this.syncTotals?.drive ? JSON.stringify(this.syncTotals.drive) : "",
+      ] : [
+        Array.from(this.links.entries()).map(([p, l]) => [p, l.slug, Boolean(l.conflict), Boolean(l.dirtyLocal), this.unreviewedUpdates?.get(p)?.count || 0]),
         this.teamPluginsCatalog?.revision || "",
-        (this.teamPluginsCatalog?.plugins || []).length,
+        teamPluginsAll.length,
         this.teamPluginsRefreshTick || 0,
-      ] : []),
+        Boolean(this.cadetSyncBusy),
+      ]),
     ]) : null;
 
-    let didSwitchTab = false;
     if (!host || host.bodyKey !== bodyKey) {
       const tabSwitched = host && host.lastTab !== null && host.lastTab !== activeTab;
-      didSwitchTab = Boolean(tabSwitched);
       if (host) {
         bodySlot.empty?.();
         host.bodyKey = bodyKey;
@@ -13784,63 +14435,470 @@ module.exports = class FlightClubMarkdown extends Plugin {
           }
         }
       }
-      if (activeTab === "live") {
-        const editTarget = file && !isArchiveActive ? this.siteEditTarget(file) : null;
-        const driveBase = file && !isArchiveActive ? this.driveBaselineFor(file) : null;
-        const driveId = file && !isArchiveActive ? this.resolveDriveIdForFile(file) : null;
-        const inDriveRoot = file && !isArchiveActive && this.isPathInDriveRoot(file.path);
-        const driveUrl = driveId ? driveOpenUrlForPath(driveId, file?.path) : null;
 
-        const isCanvasFile = file?.extension?.toLowerCase?.() === "canvas" || String(file?.path || "").toLowerCase().endsWith(".canvas");
-        const isBaseFile = file?.extension?.toLowerCase?.() === "base" || String(file?.path || "").toLowerCase().endsWith(".base");
-        const showLivePanels = Boolean(file || sharedPath || activeDocPeers.length > 0);
-        const showAllOnline = this.vaultConfig.presenceShowAll !== false;
-        const onlineRooms = hasToken && (this.workspaceActivity?.length || this.sharedPeers?.length)
-          ? this.dedupeOnlineRooms(this.workspaceActivity, this.sharedPeers, file, sharedPath)
-          : [];
+      const appendStatusPill = (parentEl, meta, extraCls = "", attr = {}) => {
+        const pill = parentEl.createSpan({
+          cls: `fc-tree-item-status ${meta.cls}${extraCls ? " " + extraCls : ""}`,
+          attr,
+        });
+        pill.createSpan({ cls: "fc-status-dot", attr: { "aria-hidden": "true" } });
+        pill.createSpan({ text: meta.label });
+        return pill;
+      };
+
+      const editTarget = file && !isArchiveActive ? this.siteEditTarget(file) : null;
+      const driveBase = file && !isArchiveActive ? this.driveBaselineFor(file) : null;
+      const driveId = file && !isArchiveActive ? this.resolveDriveIdForFile(file) : null;
+      const inDriveRoot = file && !isArchiveActive && this.isPathInDriveRoot(file.path);
+      const driveUrl = driveId ? driveOpenUrlForPath(driveId, file?.path) : null;
+      const isCanvasFile = file?.extension?.toLowerCase?.() === "canvas" || String(file?.path || "").toLowerCase().endsWith(".canvas");
+      const isBaseFile = file?.extension?.toLowerCase?.() === "base" || String(file?.path || "").toLowerCase().endsWith(".base");
+
+      if (activeTab === "sync") {
+        // ── TAB 1: СИНХРОНІЗАЦІЯ ────────────────────────────────────────────────
+        const desync = this.drivePreview?.desync;
+        const desyncCount = desync?.totalIssues || 0;
+        const trackedTotal = this.driveFilesCount?.() || 0;
+        const hasLocalDriveFiles = trackedTotal > 0 || (this.drivePreview?.matches || 0) > 0;
+        const needsInitialImport = Boolean(this.drivePreview?.available > 0 && !this.drivePreview.matches);
+        const hasDesync = Boolean(desync?.hasDesync || needsInitialImport);
+        const showSyncProgress = Boolean(this.driveDownloading && (!this._quietSync || (this.importProgress?.total || 0) > 0));
+        const pendingPushCount = dirtyCountAll + (this.syncTotals?.drive?.dirty || 0) + (structSummaryAll.total || 0) + pendingDelAll;
+        const idleTime = this.driveLastSummary?.at
+          ? new Date(this.driveLastSummary.at).toLocaleTimeString("uk-UA", { hour: "2-digit", minute: "2-digit" })
+          : "";
+        const canWriteDrive = Boolean(this.vaultConfig?.pairedCanEdit || this.accountIsAdmax);
+        const isSyncBlocked = !hasToken || Boolean(this.driveDownloading || this.reviewSyncBusy || this.updatingPlugin || this.updater?.blocked());
+
+        const syncCard = bodySlot.createDiv({
+          cls: "fc-deck-card fc-sync-card fc-sync-dock",
+          attr: { "data-fc-sync-dock": "tab" },
+        });
+        const syncHead = syncCard.createDiv({ cls: "fc-deck-header" });
+        syncHead.createEl("h4", { cls: "fc-deck-title", text: "Синхронізація з Вольтом" });
+        const badgeCls = showSyncProgress
+          ? "fc-deck-badge fc-deck-badge-ok"
+          : hasDesync || syncIssueCountAll > 0
+            ? "fc-deck-badge fc-deck-badge-warn"
+            : this.drivePreview ? "fc-deck-badge fc-deck-badge-ok" : "fc-deck-badge";
+        const badgeLabel = showSyncProgress
+          ? "Сінк триває"
+          : needsInitialImport
+            ? `${this.drivePreview.available} файлів`
+            : hasDesync
+              ? `Розбіжності · ${desyncCount}`
+              : pendingPushCount > 0
+                ? `До відправки · ${pendingPushCount}`
+                : this.drivePreview
+                  ? `${trackedTotal || this.drivePreview.available} ф.${idleTime ? ` · ${idleTime}` : ""}`
+                  : "Готово";
+        syncHead.createSpan({ cls: badgeCls, text: badgeLabel });
+
+        const dotRow = syncCard.createDiv({ cls: "fc-sync-status-row" });
+        dotRow.createSpan({
+          cls: "fc-status-dot-ind" + (showSyncProgress ? " is-busy" : (hasDesync || conflictIssueCountAll > 0) ? " is-warn" : ""),
+          attr: { "aria-hidden": "true" },
+        });
+        dotRow.createSpan({
+          cls: "fc-sync-status",
+          text: showSyncProgress
+            ? (this.driveDownloadStatus || "Перевіряємо зміни Google Drive…")
+            : !hasToken
+              ? "Підключіть акаунт FlightClub, щоб працювати із синхронізацією."
+              : needsInitialImport
+                ? `Знайдено ${this.drivePreview.available} файлів у хмарі — готово до імпорту.`
+                : this.driveDownloadStatus || "Зв’язок з Вольтом активний.",
+          attr: { role: "status", "data-fc-download-status": "" },
+        });
+
+        if (this.drivePreview?.source?.name) {
+          const source = this.drivePreview.source;
+          syncCard.createEl("p", {
+            cls: "fc-sync-route-line",
+            text: `Google Drive «${source.name}» → ${source.localRoot ? `«${source.localRoot}» у цьому Vault` : "корінь цього Vault"}`,
+          });
+        } else if (this.vaultConfig?.vaultRootName) {
+          syncCard.createEl("p", {
+            cls: "fc-sync-route-line",
+            text: `Google Drive «${this.vaultConfig.vaultRootName}» → ${this.vaultConfig.localVaultRoot ? `«${this.vaultConfig.localVaultRoot}»` : "корінь Vault"}`,
+          });
+        }
+
+        const progress = syncCard.createEl("progress", {
+          cls: "fc-import-progress",
+          attr: { "data-fc-import-progress": "", "aria-label": this.importProgress?.stage || "Синхронізація Drive" },
+        });
+        progress.hidden = !this.driveDownloading;
+        if (this.importProgress?.total > 0) {
+          progress.max = this.importProgress.total;
+          progress.value = this.importProgress.current;
+        }
+        if (showSyncProgress && this.activeSyncPath) {
+          const activeSyncBtn = syncCard.createEl("button", {
+            cls: "fc-active-sync-link",
+            attr: { type: "button", "data-fc-active-sync-link": "", "data-path": this.activeSyncPath, title: `Відкрити в Obsidian: ${this.activeSyncPath}` },
+          });
+          activeSyncBtn.createSpan({ text: "Зараз: ", cls: "fc-active-sync-prefix" });
+          activeSyncBtn.createSpan({
+            text: this.activeSyncPath.split("/").at(-1) || this.activeSyncPath,
+            cls: "fc-active-sync-name",
+            attr: { "data-fc-active-sync-name": "" },
+          });
+          activeSyncBtn.addEventListener("click", () => this.openAndRevealFile(this.activeSyncPath));
+        }
+
+        if (hasToken && !showSyncProgress && (bulkTrashBlockedAll.length > 0 || pendingDelAll > 10) && canWriteDrive) {
+          const delCount = Math.max(pendingDelAll, bulkTrashBlockedAll.length);
+          const bulkBanner = syncCard.createDiv({ cls: "fc-bulk-trash-banner", attr: { "data-fc-bulk-trash-banner": "" } });
+          bulkBanner.createEl("div", { cls: "fc-bulk-trash-title", text: `Видалено локально ${delCount} файлів (понад 10)` });
+          bulkBanner.createEl("p", {
+            cls: "fc-bulk-trash-desc",
+            text: "Масове видалення в Drive призупинено для захисту даних. Підтвердіть перенесення в кошик Drive або відновіть файли.",
+          });
+          const sampleNames = [
+            ...bulkTrashBlockedAll.map(e => String(e.path || "").split("/").at(-1) || e.path),
+            ...(this.pendingDriveDeletes || []).map(d => String(d.path || "").split("/").at(-1) || d.path),
+          ].filter(Boolean);
+          const uniqueSampleNames = [...new Set(sampleNames)];
+          if (uniqueSampleNames.length) {
+            const shown = uniqueSampleNames.slice(0, 4).join(", ");
+            const rest = delCount - Math.min(4, uniqueSampleNames.length);
+            bulkBanner.createEl("div", { cls: "fc-bulk-trash-files", text: rest > 0 ? `${shown} + ще ${rest}` : shown });
+          }
+          const bulkActions = bulkBanner.createDiv({ cls: "fc-bulk-trash-actions" });
+          const confirmTrashBtn = fcAppendButton(bulkActions, {
+            text: `Підтвердити видалення (${delCount})`,
+            icon: "alert",
+            cls: "fc-deck-btn mod-warning",
+            attr: { "data-fc-confirm-bulk-trash": "" },
+            onClick: () => void this.startVaultDownload(undefined, { pushLocal: true, structureMode: "push", confirmBulkTrash: true, showResults: true }),
+          });
+          confirmTrashBtn.disabled = isSyncBlocked;
+          const restoreTrashBtn = fcAppendButton(bulkActions, {
+            text: "Відновити з Drive",
+            icon: "pull",
+            cls: "fc-deck-btn",
+            attr: { "data-fc-restore-bulk-trash": "" },
+            onClick: () => void this.startVaultDownload(undefined, { pushLocal: false, showResults: true }),
+          });
+          restoreTrashBtn.disabled = isSyncBlocked;
+        }
+
+        if (hasToken && structSummaryAll.hasChanges && canWriteDrive) {
+          const structBanner = syncCard.createEl("details", {
+            cls: "fc-structure-banner fc-dock-disclosure",
+            attr: { "data-fc-structure-banner": "", ...(host?.structureExpanded ? { open: "" } : {}) },
+          });
+          structBanner.createEl("summary", { cls: "fc-dock-details-summary", text: `Зміни папок · ${structSummaryAll.total}` });
+          structBanner.addEventListener("toggle", () => { if (host) host.structureExpanded = structBanner.open; });
+          structBanner.createEl("p", { cls: "fc-sync-note", text: "Перейменування збережено локально. Надішліть або відкотіть структуру перед завершенням." });
+          if (structSummaryAll.lines.length) {
+            const sList = structBanner.createEl("ul", { cls: "fc-structure-banner-list" });
+            for (const line of structSummaryAll.lines.slice(0, 4)) sList.createEl("li", { text: `${line.badge}: ${line.text}` });
+            if (structSummaryAll.lines.length > 4) sList.createEl("li", { text: `…та ще ${structSummaryAll.lines.length - 4} змін` });
+          }
+          const structActions = structBanner.createDiv({ cls: "fc-deck-grid" });
+          const pushStructBtn = fcAppendButton(structActions, {
+            text: this.driveDownloading ? "Відправка…" : "Залити структуру в Drive",
+            icon: "push",
+            cls: "mod-cta fc-deck-btn",
+            attr: { "data-fc-structure-push": "" },
+            onClick: () => void this.pushStructureChangesToDrive(),
+          });
+          pushStructBtn.disabled = Boolean(this.driveDownloading || this.publishingDrive);
+          fcAppendButton(structActions, {
+            text: "Переглянути",
+            icon: "eye",
+            cls: "fc-deck-btn",
+            attr: { "data-fc-structure-inspect": "" },
+            onClick: () => this.openStructureSyncModal(this.pendingStructureSummary()),
+          });
+          const revertStructBtn = fcAppendButton(structActions, {
+            text: "Відкотити",
+            icon: "undo",
+            cls: "fc-deck-btn",
+            attr: { "data-fc-structure-revert": "" },
+            onClick: () => {
+              this.dialogForm({
+                title: "Відкотити локальні зміни структури папок?",
+                description: "Локально перейменовані або переміщені папки й файли повернуться до розташування як на головному Google Drive.",
+                button: "Відкотити до версії Drive",
+                submit: async () => { await this.revertStructureChangesToDrive(); },
+              });
+            },
+          });
+          revertStructBtn.disabled = Boolean(this.driveDownloading || this.publishingDrive);
+          fcBalanceGrid(structActions);
+        }
+
+        const primaryRow = syncCard.createDiv({ cls: "fc-sync-direction-grid" });
+        if (needsInitialImport) {
+          const importBtn = fcAppendButton(primaryRow, {
+            text: this.driveDownloading ? "Імпортуємо…" : "Імпортувати з Drive",
+            icon: "pull",
+            cls: "mod-cta fc-deck-btn fc-btn-pull-drive fc-span-full",
+            attr: { "data-fc-sync-pull": "", title: "Завантажити початкову копію файлів із Google Drive" },
+            onClick: () => void this.startVaultDownload(undefined, { pushLocal: false, showResults: true }),
+          });
+          importBtn.disabled = isSyncBlocked;
+        } else {
+          const syncNowBtn = fcAppendButton(primaryRow, {
+            text: this.driveDownloading ? "Синхронізація…" : "Синхронізувати зараз",
+            icon: "sync",
+            cls: "mod-cta fc-deck-btn fc-span-full",
+            attr: { "data-fc-sync-now": "", title: "Двостороння синхронізація локальних правок та оновлень із Google Drive" },
+            onClick: () => void this.startVaultDownload(undefined, {
+              pushLocal: Boolean(canWriteDrive && hasLocalDriveFiles),
+              structureMode: "push",
+              showResults: true,
+            }),
+          });
+          syncNowBtn.disabled = isSyncBlocked;
+          const pullBtn = fcAppendButton(primaryRow, {
+            text: this.driveDownloading ? "Оновлення…" : "Оновити з Drive",
+            icon: "pull",
+            cls: "fc-deck-btn fc-btn-pull-drive",
+            attr: { "data-fc-sync-pull": "", title: "Завантажити нові й оновлені файли з Google Drive без відправки локальних змін" },
+            onClick: () => void this.startVaultDownload(undefined, { pushLocal: false, showResults: true }),
+          });
+          pullBtn.disabled = isSyncBlocked;
+        }
+        if (canWriteDrive) {
+          const pushBtn = fcAppendButton(primaryRow, {
+            text: this.driveDownloading
+              ? "Відправка…"
+              : pendingPushCount > 0 ? `Залити в Drive (${pendingPushCount})` : "Залити в Drive",
+            icon: "push",
+            cls: "fc-deck-btn fc-btn-push-drive",
+            attr: { "data-fc-sync-push": "", title: "Відправити локальні правки та перейменування на Google Drive" },
+            onClick: () => void this.startVaultDownload(undefined, { pushLocal: true, structureMode: "push", showResults: true }),
+          });
+          pushBtn.disabled = isSyncBlocked;
+        }
+        if (this.driveDownloading) {
+          fcAppendButton(primaryRow, {
+            text: "Призупинити",
+            cls: "fc-deck-btn fc-sync-pause",
+            onClick: () => {
+              this.cancelDriveDownload = true;
+              this.driveResyncQueued = false;
+              this.driveDownloadStatus = "Синхронізацію призупинено.";
+              this.refreshDockViews();
+            },
+          });
+        } else {
+          const checkBtn = fcAppendButton(primaryRow, {
+            text: this.previewingDrive ? "Перевірка…" : "Звірити стан",
+            icon: "search",
+            cls: "fc-deck-btn",
+            onClick: () => void this.prepareVaultImport({ allowAutomatic: false }),
+          });
+          checkBtn.disabled = !hasToken || Boolean(this.driveDownloading || this.previewingDrive);
+        }
+        if (canWriteDrive) {
+          const folderBtn = fcAppendButton(primaryRow, {
+            text: "Перейменувати папку",
+            icon: "folder",
+            cls: "fc-deck-btn",
+            attr: { "data-fc-rename-folder": "" },
+            onClick: () => this.openFolderRenameModal(),
+          });
+          folderBtn.disabled = Boolean(this.driveDownloading || this.publishingDrive);
+        }
+        fcBalanceGrid(primaryRow);
+
+        if (file && !platform && !isArchiveActive && (driveBase || inDriveRoot)) {
+          const noteSyncRow = syncCard.createDiv({ cls: "fc-sync-direction-grid" });
+          if (driveBase) {
+            const pullOne = fcAppendButton(noteSyncRow, {
+              text: this.driveDownloading ? "Оновлення…" : `Підтягнути: ${file.basename}`,
+              icon: "pull",
+              cls: "fc-deck-btn fc-btn-pull-drive",
+              attr: { "data-fc-pull-active": "" },
+              onClick: () => void this.pullActiveFileFromDrive(file),
+            });
+            pullOne.disabled = Boolean(this.driveDownloading || this.publishingDrive || !hasToken);
+          }
+          if (canWriteDrive) {
+            const pushOne = fcAppendButton(noteSyncRow, {
+              text: this.publishingDrive ? "Відправка…" : `Залити: ${file.basename}`,
+              icon: "push",
+              cls: "fc-deck-btn fc-btn-push-drive",
+              attr: { "data-fc-push-active": "" },
+              onClick: () => void this.pushActiveFileToDrive(file),
+            });
+            pushOne.disabled = Boolean(this.driveDownloading || this.publishingDrive || !hasToken);
+          }
+          fcBalanceGrid(noteSyncRow);
+        }
+
+        // Pending changes list BEFORE sending + Conflict/Dirty shortcuts
+        const pendingItems = this.collectPendingSyncEntries(structSummaryAll);
+        if (hasToken && !showSyncProgress && (conflictIssueCountAll > 0 || pendingPushCount > 0)) {
+          const attentionBar = syncCard.createDiv({ cls: "fc-sync-attention-bar", attr: { "data-fc-sync-attention": "" } });
+          if (conflictIssueCountAll > 0) {
+            fcAppendButton(attentionBar, {
+              text: `Конфлікти / архів · ${conflictIssueCountAll}`,
+              icon: "alert",
+              cls: "fc-sync-attention-btn is-conflict",
+              onClick: () => this.openSyncResults("drive", "conflict"),
+            });
+          }
+          if (pendingPushCount > 0) {
+            fcAppendButton(attentionBar, {
+              text: `Локальні зміни · ${pendingPushCount}`,
+              icon: "edit",
+              cls: "fc-sync-attention-btn is-dirty",
+              onClick: () => this.openSyncResults("drive", dirtyCountAll || this.syncTotals?.drive?.dirty ? "dirty" : "changed"),
+            });
+          }
+          fcBalanceGrid(attentionBar);
+        }
+
+        if (pendingItems.length > 0) {
+          const pendCard = bodySlot.createDiv({ cls: "fc-deck-card", attr: { "data-fc-pending-changes": "" } });
+          const pHead = pendCard.createDiv({ cls: "fc-deck-header" });
+          pHead.createEl("h4", { cls: "fc-deck-title", text: `Локальні та хмарні зміни (${pendingItems.length})` });
+          fcAppendButton(pHead, {
+            text: "Детальніше",
+            cls: "fc-text-btn",
+            onClick: () => this.openSyncResults("drive", pendingItems[0].reviewStatus === "conflict" ? "conflict" : "dirty"),
+          });
+          const ul = pendCard.createEl("ul", { cls: "fc-pending-changes-list" });
+          for (const item of pendingItems.slice(0, 6)) {
+            const li = ul.createEl("li", { cls: "fc-pending-change-item", attr: { "data-tone": item.tone } });
+            const info = li.createDiv({ cls: "fc-pending-change-info" });
+            info.createSpan({ text: item.name, cls: "fc-pending-change-name", attr: { title: item.path } });
+            info.createSpan({ text: item.meta, cls: "fc-pending-change-meta" });
+            fcAppendButton(li, {
+              text: item.reviewStatus === "structure" ? "План" : "Огляд",
+              cls: "fc-row-action-btn",
+              onClick: () => {
+                if (item.reviewStatus === "structure") this.openStructureSyncModal(this.pendingStructureSummary());
+                else this.openSyncResults("drive", item.reviewStatus === "conflict" ? "conflict" : "dirty", item.entry);
+              },
+            });
+          }
+        }
+
+        if (!this.driveDownloading && this.syncTotals?.drive) {
+          const metricsCard = bodySlot.createDiv({ cls: "fc-deck-card" });
+          metricsCard.createEl("h4", { cls: "fc-deck-title", text: "Стан синхронізації" });
+          this.renderSyncMetrics(metricsCard);
+          if (Array.isArray(this.recentSyncedEntries) && this.recentSyncedEntries.length > 0) {
+            const feed = metricsCard.createDiv({ cls: "fc-sync-recent-feed" });
+            feed.createSpan({ text: "Останні файли:", cls: "fc-sync-recent-label" });
+            const feedList = feed.createDiv({ cls: "fc-sync-recent-chips" });
+            for (const rec of this.recentSyncedEntries.slice(0, 4)) {
+              const chip = feedList.createEl("button", {
+                cls: "fc-sync-recent-chip",
+                text: rec.path.split("/").at(-1) || rec.path,
+                attr: { type: "button", title: `Відкрити в Obsidian: ${rec.path}` },
+              });
+              chip.addEventListener("click", () => this.openAndRevealFile(rec.path));
+            }
+          }
+        }
+
+        // Checkpoints & Backups + Settings link
+        const checkpoints = this.getSyncCheckpoints();
+        const backups = this.driveLastSummary?.backups || [];
+        if (checkpoints.length > 0 || backups.length > 0 || hasToken) {
+          const cpCard = bodySlot.createDiv({ cls: "fc-deck-card" });
+          if (checkpoints.length > 0) {
+            const cpStrip = cpCard.createDiv({ cls: "fc-checkpoint-strip", attr: { "data-fc-sync-checkpoints": "" } });
+            cpStrip.createSpan({ cls: "fc-checkpoint-label", text: "Чекпоїнти синхронізації" });
+            const cpList = cpStrip.createDiv({ cls: "fc-checkpoint-list" });
+            for (const cp of checkpoints) {
+              const cpRow = cpList.createDiv({ cls: "fc-checkpoint-row" + (cp.active ? " is-active" : "") });
+              cpRow.createSpan({ cls: "fc-checkpoint-name", text: cp.name });
+              const metaBits = [
+                cp.filesCount ? `${cp.filesCount} ф.` : null,
+                cp.at ? new Date(cp.at).toLocaleDateString("uk-UA", { day: "2-digit", month: "2-digit" }) : null,
+              ].filter(Boolean);
+              if (metaBits.length) cpRow.createSpan({ cls: "fc-checkpoint-meta", text: metaBits.join(" · ") });
+              cpRow.createSpan({
+                cls: "fc-checkpoint-pill" + (cp.active ? " is-active" : ""),
+                text: cp.active ? "Активний" : "Чекпоїнт",
+              });
+            }
+          }
+          if (backups.length > 0) {
+            const backupDetails = cpCard.createEl("details", { cls: "fc-secondary-actions" });
+            backupDetails.createEl("summary", { text: `Архів конфліктів / видалень (${backups.length})` });
+            const bList = backupDetails.createDiv({ cls: "fc-backup-list" });
+            for (const item of backups.slice(0, 12)) {
+              const bRow = bList.createDiv({ cls: "fc-backup-row" });
+              const cleanName = (item.path || item.backupPath || "").split("/").pop()?.replace(/\.(?:md|canvas)$/i, "") || item.backupPath;
+              const reasonText = item.reason === "drive_wins_conflict" ? "чернетка до оновлення з Drive"
+                : item.reason === "deleted_on_drive" ? "видалено на Drive"
+                : item.reason === "remote_move" || item.reason === "remote_move_displaced" ? "переміщено на Drive"
+                : "архівна копія";
+              bRow.createSpan({ text: `${cleanName} (${reasonText})`, attr: { title: `${item.path} -> ${item.backupPath}` } });
+              const origFile = item.path ? this.app.vault.getAbstractFileByPath(item.path) : null;
+              if (origFile instanceof TFile) {
+                fcAppendButton(bRow, { text: "Оригінал", cls: "fc-row-action-btn", attr: { title: item.path }, onClick: () => this.openAndRevealFile(item.path) });
+              }
+              fcAppendButton(bRow, {
+                text: "Архів",
+                cls: "fc-row-action-btn",
+                attr: { title: item.backupPath },
+                onClick: () => {
+                  const bf = this.app.vault.getAbstractFileByPath(item.backupPath);
+                  if (bf instanceof TFile) this.openAndRevealFile(item.backupPath);
+                  else new Notice("Архівний файл не знайдено: " + item.backupPath);
+                },
+              });
+            }
+          }
+          const footBtns = cpCard.createDiv({ cls: "fc-deck-grid" });
+          fcAppendButton(footBtns, {
+            text: "Налаштування акаунта й папок",
+            icon: "sliders",
+            cls: "fc-deck-btn",
+            onClick: () => this.openPluginSettingsTab(),
+          });
+          fcAppendButton(footBtns, {
+            text: "Повний звіт змін",
+            icon: "history",
+            cls: "fc-deck-btn",
+            onClick: () => this.openSyncResults("drive", "all"),
+          });
+          fcBalanceGrid(footBtns);
+        }
+      } else if (activeTab === "collab") {
+        // ── TAB 2: СПІВПРАЦЯ ────────────────────────────────────────────────────
         const totalOnlinePeers = onlineRooms.reduce((sum, r) => sum + ((r.peers || []).length), 0);
+        const radarCollapsed = Boolean(this.vaultConfig.radarCollapsed);
+        const liveHeroCollapsed = Boolean(this.vaultConfig.liveHeroCollapsed);
 
-        const renderPresenceSection = () => {
-          if (platform || isArchiveActive) return;
-          if (!showLivePanels && !(showAllOnline && onlineRooms.length > 0)) return;
-          const radarCollapsed = Boolean(this.vaultConfig.radarCollapsed);
-          const liveHeroCollapsed = Boolean(this.vaultConfig.liveHeroCollapsed);
+        // 1) Presence & Vault Activity Card at the top
+        if (!platform && !isArchiveActive && (file || sharedPath || activeDocPeers.length > 0 || (showAllOnline && onlineRooms.length > 0))) {
           const radarCard = bodySlot.createDiv({
             cls: "fc-deck-card fc-deck-card-live fc-presence-top-card" + (radarCollapsed ? " is-collapsed" : ""),
             attr: { "data-collapsed": String(radarCollapsed) },
           });
           const radarHead = radarCard.createDiv({ cls: "fc-deck-header fc-deck-header-collapsible" });
-          const uniqueOnlineCount = (() => {
-            if (!showAllOnline) return activeDocPeers.length + (activeLiveTarget || sharedPath ? 1 : 0);
-            const seen = new Set();
-            for (const p of activeDocPeers) seen.add(p.userId || p.clientId || p.name);
-            for (const r of onlineRooms) for (const p of r.peers || []) seen.add(p.userId || p.clientId || p.name);
-            if (activeLiveTarget || sharedPath) seen.add(this.vaultConfig.pairedUserId || this.clientId || "self");
-            return seen.size;
-          })();
           radarHead.createEl("h4", {
             text: showAllOnline
-              ? `🌐 Онлайн у вольті (${uniqueOnlineCount})`
+              ? `Онлайн у вольті (${uniqueOnlineCount})`
               : activeDocPeers.length > 0
-                ? `👥 Зараз у документі (${activeDocPeers.length + 1})`
+                ? `Зараз у документі (${activeDocPeers.length + 1})`
                 : activeLiveTarget || sharedPath
-                  ? "👥 Зараз у документі (1 · ви)"
-                  : "👥 Зараз у документі",
+                  ? "Зараз у документі (1 · ви)"
+                  : "Зараз у документі",
             cls: "fc-presence-heading",
           });
           const radarHeadRight = radarHead.createDiv({ cls: "fc-deck-header-actions" });
-
           const allLbl = radarHeadRight.createEl("label", {
             cls: "fc-presence-all-toggle",
             attr: {
               title: showAllOnline
                 ? "Показуються всі активні учасники у вольті. Зніміть галочку — лише поточний документ."
-                : "Показуються лише учасники поточного документа. Позначте — побачити всіх онлайн у вольті.",
+                : "Показуються лише учасники поточного документа.",
             },
           });
-          const allCb = allLbl.createEl("input", {
-            attr: { type: "checkbox", "data-fc-presence-show-all": "true" },
-          });
+          const allCb = allLbl.createEl("input", { attr: { type: "checkbox", "data-fc-presence-show-all": "true" } });
           allCb.checked = showAllOnline;
           allCb.addEventListener("change", () => {
             this.vaultConfig.presenceShowAll = allCb.checked;
@@ -13854,29 +14912,18 @@ module.exports = class FlightClubMarkdown extends Plugin {
           if (liveHeroCollapsed && file && !platform && liveMode.eligible) {
             const liveOn = Boolean(this.vaultConfig.liveEnabled);
             const quickLiveBtn = radarHeadRight.createEl("button", {
-              text: liveOn ? "🟢 Live" : "⏸ Пауза",
+              text: liveOn ? "Live" : "Пауза",
               cls: "fc-collapse-chip fc-quick-live-chip",
-              attr: {
-                type: "button",
-                "aria-pressed": String(liveOn),
-                title: liveOn ? "Призупинити Live Edit" : "Увімкнути Live Edit",
-              },
+              attr: { type: "button", "aria-pressed": String(liveOn), title: liveOn ? "Призупинити Live Edit" : "Увімкнути Live Edit" },
             });
             quickLiveBtn.disabled = Boolean(this.liveModeChanging);
-            quickLiveBtn.addEventListener("click", (e) => {
-              e.stopPropagation();
-              void this.toggleLiveMode();
-            });
+            quickLiveBtn.addEventListener("click", (e) => { e.stopPropagation(); void this.toggleLiveMode(); });
           }
+
           const radarCollapseBtn = radarHeadRight.createEl("button", {
             text: radarCollapsed ? "▸" : "▾",
             cls: "fc-collapse-chip",
-            attr: {
-              type: "button",
-              "data-fc-collapse": "radar-card",
-              "aria-expanded": String(!radarCollapsed),
-              title: radarCollapsed ? "Розгорнути панель учасників" : "Згорнути панель учасників",
-            },
+            attr: { type: "button", "data-fc-collapse": "radar-card", "aria-expanded": String(!radarCollapsed) },
           });
           radarCollapseBtn.addEventListener("click", (e) => {
             e.stopPropagation();
@@ -13905,104 +14952,77 @@ module.exports = class FlightClubMarkdown extends Plugin {
             sNameWrap.createEl("strong", { text: `${selfPeer.name} (Ви)` });
             sNameWrap.createEl("div", {
               cls: "fc-deck-row-meta",
-              text: `💎 Цей Obsidian${selfPeer.roleLabel ? " · " + selfPeer.roleLabel : ""}${selfPeer.hub ? " · " + selfPeer.hub : ""}`,
+              text: ["Цей Obsidian", selfPeer.roleLabel, selfPeer.hub].filter(Boolean).join(" · "),
             });
             const sAct = this.describePeerActivity(selfPeer, isCanvasFile);
             const sActRow = selfCard.createDiv({ cls: "fc-peer-activity" + (sAct.editing ? " is-editing" : "") });
             const sActStatus = sActRow.createSpan({ cls: "fc-peer-activity-status" });
+            sActStatus.createSpan({ cls: "fc-live-state-dot" + (sAct.editing ? " is-editing" : ""), attr: { "aria-hidden": "true" } });
             sActStatus.createSpan({
-              cls: "fc-live-state-dot" + (sAct.editing ? " is-editing" : ""),
-              attr: { "aria-hidden": "true" },
-            });
-            sActStatus.createSpan({
-              text: `${sAct.icon} ${selfPeer.actionDetail ? sAct.text : (this.vaultConfig.liveEnabled ? (isCanvasFile ? "Canvas Live активний" : "Live Edit активний") : sAct.text)}`,
+              text: selfPeer.actionDetail ? sAct.text : (this.vaultConfig.liveEnabled ? (isCanvasFile ? "Canvas Live активний" : "Live Edit активний") : sAct.text),
             });
           }
 
-          if (activeDocPeers.length > 0) {
-            for (const peer of activeDocPeers) {
-              const pCard = radarBody.createDiv({ cls: "fc-peer-card" + (peer.opsec ? " is-opsec" : "") });
-              if (peer.color) pCard.style.borderLeft = `3px solid ${peer.color}`;
-              const pTop = pCard.createDiv({ cls: "fc-peer-top" });
-              const pId = pTop.createDiv({ cls: "fc-peer-identity" });
-              addAvatar(pId, peer);
-              const pNameWrap = pId.createDiv();
-              const profUrl = userProfileUrl(peer.userId);
-              const isSameUser = peer.userId && peer.userId === this.vaultConfig.pairedUserId;
-              const suffix = peer.clientId === this.clientId ? " (ви)" : isSameUser ? " (ваш інший пристрій)" : "";
-              const titleLine = pNameWrap.createDiv({ cls: "fc-peer-title-row" });
+          for (const peer of activeDocPeers) {
+            const pCard = radarBody.createDiv({ cls: "fc-peer-card" + (peer.opsec ? " is-opsec" : "") });
+            if (peer.color) pCard.style.borderLeft = `2px solid ${peer.color}`;
+            const pTop = pCard.createDiv({ cls: "fc-peer-top" });
+            const pId = pTop.createDiv({ cls: "fc-peer-identity" });
+            addAvatar(pId, peer);
+            const pNameWrap = pId.createDiv();
+            const profUrl = userProfileUrl(peer.userId);
+            const isSameUser = peer.userId && peer.userId === this.vaultConfig.pairedUserId;
+            const suffix = peer.clientId === this.clientId ? " (ви)" : isSameUser ? " (інший пристрій)" : "";
+            const titleLine = pNameWrap.createDiv({ cls: "fc-peer-title-row" });
+            if (profUrl) {
+              const pLink = titleLine.createEl("a", {
+                text: `${peer.name}${suffix} ↗`,
+                cls: "fc-peer-name-link",
+                attr: { href: profUrl, target: "_blank", rel: "noopener noreferrer", title: `Профіль ${peer.name}` },
+              });
+              pLink.addEventListener("click", (e) => e.stopPropagation());
+            } else if (!peer.opsec) {
+              titleLine.createEl("strong", { text: `${peer.name}${suffix}` });
+            }
+            if (peer.opsec) titleLine.createSpan({ cls: "fc-opsec-badge", text: "OPSEC" });
+            titleLine.createSpan({ text: "Тут", cls: "fc-online-here-pill" });
+            pNameWrap.createEl("div", {
+              text: `${peer.source === "web" ? "Сайт" : "Obsidian"} · ${peer.roleLabel || (peer.editing ? "Редагує" : "Учасник")}${peer.hub ? " · " + peer.hub : ""}`,
+              cls: "fc-deck-row-meta",
+            });
+
+            const pAct = this.describePeerActivity(peer, isCanvasFile);
+            const actRow = pCard.createDiv({ cls: "fc-peer-activity" + (pAct.editing ? " is-editing" : "") });
+            const actStatus = actRow.createSpan({ cls: "fc-peer-activity-status" });
+            actStatus.createSpan({ cls: "fc-live-state-dot" + (pAct.editing ? " is-editing" : ""), attr: { "aria-hidden": "true" } });
+            actStatus.createSpan({ text: `${pAct.text}${pAct.heading ? ` · § ${pAct.heading}` : ""}` });
+
+            if (activeLiveTarget) {
+              const actBtns = actRow.createDiv({ cls: "fc-deck-grid fc-peer-action-btns" });
+              fcAppendButton(actBtns, {
+                text: isCanvasFile ? (pAct.canvasNodeLabel || "У Canvas") : `Ряд. ${pAct.line || peer.line || 1}`,
+                icon: isCanvasFile ? "canvas" : "eye",
+                cls: "fc-deck-btn fc-teleport-btn",
+                attr: { "data-fc-jump-peer": peer.clientId || peer.userId || peer.name || "peer" },
+                onClick: () => void this.jumpToPeerCursor(peer, file),
+              });
               if (profUrl) {
-                const pLink = titleLine.createEl("a", {
-                  text: `${peer.name}${suffix} ↗`,
-                  cls: "fc-peer-name-link",
-                  attr: {
-                    href: profUrl,
-                    target: "_blank",
-                    rel: "noopener noreferrer",
-                    title: `Відкрити профіль ${peer.name} на flightclub.com.ua`,
-                  },
-                });
-                pLink.addEventListener("click", (e) => e.stopPropagation());
-              } else if (!peer.opsec) {
-                titleLine.createEl("strong", {
-                  text: `${peer.name}${suffix}`,
+                fcAppendButton(actBtns, {
+                  text: "Профіль",
+                  icon: "external",
+                  cls: "fc-deck-btn",
+                  attr: { title: profUrl },
+                  onClick: () => this.openSite(profUrl),
                 });
               }
-              if (peer.opsec) {
-                titleLine.createSpan({ cls: "fc-opsec-badge", text: "OPSEC" });
-              }
-              titleLine.createSpan({ text: "Тут", cls: "fc-online-here-pill" });
-              pNameWrap.createEl("div", {
-                text: `${peer.source === "web" ? "🌐 Сайт" : "💎 Obsidian"} · ${peer.roleLabel || (peer.editing ? "Редагує" : "Учасник")}${peer.hub ? " · " + peer.hub : ""}`,
-                cls: "fc-deck-row-meta",
-              });
-
-              const pAct = this.describePeerActivity(peer, isCanvasFile);
-              const actRow = pCard.createDiv({ cls: "fc-peer-activity" + (pAct.editing ? " is-editing" : "") });
-              const actStatus = actRow.createSpan({ cls: "fc-peer-activity-status" });
-              actStatus.createSpan({
-                cls: "fc-live-state-dot" + (pAct.editing ? " is-editing" : ""),
-                attr: { "aria-hidden": "true" },
-              });
-              actStatus.createSpan({ text: `${pAct.icon} ${pAct.text}${pAct.heading ? ` · § ${pAct.heading}` : ""}` });
-
-              if (activeLiveTarget) {
-                const actBtns = actRow.createDiv({ cls: "fc-deck-grid fc-peer-action-btns" });
-                const jumpBtn = actBtns.createEl("button", {
-                  text: isCanvasFile
-                    ? (pAct.canvasNodeLabel ? `🎨 ${pAct.canvasNodeLabel}` : "🎨 У Canvas")
-                    : `🎯 Ряд. ${pAct.line || peer.line || 1}`,
-                  cls: "fc-deck-btn fc-teleport-btn",
-                  attr: {
-                    type: "button",
-                    "data-fc-jump-peer": peer.clientId || peer.userId || peer.name || "peer",
-                    title: isCanvasFile ? "Перейти та сфокусувати картку колеги у Canvas" : "Телепортуватися до живого курсора учасника в редакторі",
-                  },
-                });
-                jumpBtn.addEventListener("click", () => void this.jumpToPeerCursor(peer, file));
-
-                if (profUrl) {
-                  const openProfBtn = actBtns.createEl("button", {
-                    text: "👤 Профіль",
-                    cls: "fc-deck-btn",
-                    attr: { type: "button", title: profUrl },
-                  });
-                  openProfBtn.addEventListener("click", () => this.openSite(profUrl));
-                }
-              }
+              fcBalanceGrid(actBtns);
             }
           }
 
           if (showAllOnline && onlineRooms.length > 0) {
-            const roomsWrap = radarBody.createDiv({
-              cls: "fc-online-rooms-embed",
-              attr: { "data-fc-online-rooms": "" },
-            });
+            const roomsWrap = radarBody.createDiv({ cls: "fc-online-rooms-embed", attr: { "data-fc-online-rooms": "" } });
             const roomsSubHead = roomsWrap.createDiv({ cls: "fc-online-subhead" });
-            roomsSubHead.createSpan({
-              text: `🌐 Зараз онлайн у документах (${totalOnlinePeers})`,
-              cls: "fc-online-subhead-label",
-            });
+            roomsSubHead.createSpan({ text: `Зараз онлайн у документах (${totalOnlinePeers})` });
             const list = roomsWrap.createEl("ul", { cls: "fc-workspace-activity-list fc-online-rooms-list" });
             for (const room of onlineRooms) {
               const roomIsCanvas = /\.canvas$/i.test(String(room.path || room.title || ""));
@@ -14014,42 +15034,23 @@ module.exports = class FlightClubMarkdown extends Plugin {
               const li = list.createEl("li", { cls: "fc-online-room" + (isCurrent ? " is-current" : "") });
               const roomTop = li.createDiv({ cls: "fc-online-room-head" });
               const roomTitleBtn = roomTop.createEl("button", {
-                text: `${roomIsCanvas ? "🎨" : "📄"} ${room.title || room.path || room.slug}`,
+                text: room.title || room.path || room.slug,
                 cls: "fc-online-room-title",
-                attr: {
-                  type: "button",
-                  title: isCurrent ? "Ви вже в цьому документі" : `Відкрити ${room.path || room.title || room.slug} в Obsidian`,
-                },
+                attr: { type: "button", title: isCurrent ? "Ви вже в цьому документі" : `Відкрити ${room.path || room.title || room.slug}` },
               });
               roomTitleBtn.addEventListener("click", () => {
                 const firstPeer = (room.peers || []).find((p) => p.clientId !== this.clientId) || (room.peers || [])[0] || null;
                 void this.teleportToOnlinePeer(room, firstPeer);
               });
               const roomHeadRight = roomTop.createDiv({ cls: "fc-online-room-actions" });
-              if (isCurrent) {
-                roomHeadRight.createSpan({ text: "Тут", cls: "fc-online-here-pill" });
-              }
+              if (isCurrent) roomHeadRight.createSpan({ text: "Тут", cls: "fc-online-here-pill" });
               if (room.kind === "drive" && room.fileId) {
                 const gDriveUrl = driveOpenUrlForPath(room.fileId, room.path);
                 const webUrl = `${SITE}/markdown?view=vault&file=${encodeURIComponent(room.fileId)}&edit=1`;
-                const docsBtn = roomHeadRight.createEl("button", {
-                  text: "Docs ↗",
-                  cls: "fc-online-mini-link",
-                  attr: { type: "button", title: `Відкрити у Google Docs: ${gDriveUrl}` },
-                });
-                docsBtn.addEventListener("click", (e) => {
-                  e.stopPropagation();
-                  this.openSite(gDriveUrl);
-                });
-                const vaultBtn = roomHeadRight.createEl("button", {
-                  text: "Vault ↗",
-                  cls: "fc-online-mini-link",
-                  attr: { type: "button", title: `Відкрити у FlightClub Drive Vault: ${webUrl}` },
-                });
-                vaultBtn.addEventListener("click", (e) => {
-                  e.stopPropagation();
-                  this.openSite(webUrl);
-                });
+                const docsBtn = roomHeadRight.createEl("button", { text: "Docs", cls: "fc-online-mini-link", attr: { type: "button", title: gDriveUrl } });
+                docsBtn.addEventListener("click", (e) => { e.stopPropagation(); this.openSite(gDriveUrl); });
+                const vaultBtn = roomHeadRight.createEl("button", { text: "Vault", cls: "fc-online-mini-link", attr: { type: "button", title: webUrl } });
+                vaultBtn.addEventListener("click", (e) => { e.stopPropagation(); this.openSite(webUrl); });
               }
 
               const peersBox = li.createDiv({ cls: "fc-online-peer-list" });
@@ -14064,44 +15065,20 @@ module.exports = class FlightClubMarkdown extends Plugin {
                 addAvatar(pRow, peer);
                 const pMain = pRow.createDiv({ cls: "fc-online-peer-main" });
                 const pIdentity = pMain.createDiv({ cls: "fc-online-peer-who" });
-                pIdentity.createSpan({
-                  cls: "fc-live-state-dot" + (pInfo.editing ? " is-editing" : ""),
-                  attr: { "aria-hidden": "true" },
-                });
+                pIdentity.createSpan({ cls: "fc-live-state-dot" + (pInfo.editing ? " is-editing" : ""), attr: { "aria-hidden": "true" } });
                 const suffix = isSelfClient ? " (ви)" : isSameUser ? " (інший пристрій)" : "";
                 pIdentity.createEl("strong", { text: `${peer.name || "Учасник"}${suffix}`, cls: "fc-online-peer-name" });
-                pIdentity.createSpan({
-                  text: peer.source === "web" ? "🌐 Сайт" : "💎 Obsidian",
-                  cls: "fc-online-source-pill",
-                });
-                const statusMeta = [
-                  `${pInfo.icon} ${pInfo.text}`,
-                  pInfo.heading ? `§ ${pInfo.heading}` : "",
-                  peer.roleLabel || "",
-                  peer.hub || "",
-                ].filter(Boolean).join(" · ");
-                pMain.createEl("div", {
-                  text: statusMeta,
-                  cls: "fc-online-peer-status" + (pInfo.editing ? " is-editing" : ""),
-                });
-
+                pIdentity.createSpan({ text: peer.source === "web" ? "Сайт" : "Obsidian", cls: "fc-online-source-pill" });
+                const statusMeta = [pInfo.text, pInfo.heading ? `§ ${pInfo.heading}` : "", peer.roleLabel || "", peer.hub || ""].filter(Boolean).join(" · ");
+                pMain.createEl("div", { text: statusMeta, cls: "fc-online-peer-status" + (pInfo.editing ? " is-editing" : "") });
                 const teleportBtn = pRow.createEl("button", {
                   text: isCurrent
-                    ? (roomIsCanvas ? (pInfo.canvasNodeLabel ? `🎨 ${pInfo.canvasNodeLabel}` : "🎨 Фокус") : `🎯 Ряд. ${pInfo.line || 1}`)
-                    : (roomIsCanvas ? "🎨 Телепорт" : (pInfo.line ? `🎯 Ряд. ${pInfo.line}` : "🎯 Телепорт")),
+                    ? (roomIsCanvas ? (pInfo.canvasNodeLabel || "Фокус") : `Ряд. ${pInfo.line || 1}`)
+                    : (roomIsCanvas ? "У Canvas" : (pInfo.line ? `Ряд. ${pInfo.line}` : "Перейти")),
                   cls: "fc-deck-btn fc-teleport-btn",
-                  attr: {
-                    type: "button",
-                    "data-fc-teleport-peer": peer.clientId || peer.userId || peer.name || "peer",
-                    title: isCurrent
-                      ? `Перейти до позиції ${peer.name} у цьому документі`
-                      : `Телепортуватися до ${peer.name} у «${room.title || room.slug}»${pInfo.line ? ` (ряд. ${pInfo.line})` : pInfo.canvasNodeLabel ? ` («${pInfo.canvasNodeLabel}»)` : ""}`,
-                  },
+                  attr: { type: "button", "data-fc-teleport-peer": peer.clientId || peer.userId || peer.name || "peer" },
                 });
-                teleportBtn.addEventListener("click", (e) => {
-                  e.stopPropagation();
-                  void this.teleportToOnlinePeer(room, peer);
-                });
+                teleportBtn.addEventListener("click", (e) => { e.stopPropagation(); void this.teleportToOnlinePeer(room, peer); });
                 pRow.addEventListener("click", () => void this.teleportToOnlinePeer(room, peer));
               }
             }
@@ -14116,155 +15093,307 @@ module.exports = class FlightClubMarkdown extends Plugin {
               ))
               .reduce((sum, r) => sum + ((r.peers || []).length), 0);
             if (otherPeers > 0) {
-              const showAllHint = radarBody.createEl("button", {
-                text: `🌐 Ще ${otherPeers} онлайн в інших документах · Показати всіх`,
+              const showAllHint = fcAppendButton(radarBody, {
+                text: `Ще ${otherPeers} онлайн в інших документах · Показати всіх`,
+                icon: "collab",
                 cls: "fc-deck-btn fc-presence-show-all-btn",
-                attr: { type: "button" },
+                onClick: () => {
+                  this.vaultConfig.presenceShowAll = true;
+                  void this.persist().catch(() => {});
+                  this.liveBannerSignature = null;
+                  this.renderLiveBanner();
+                  this.refreshDockViews(true);
+                },
               });
-              showAllHint.addEventListener("click", () => {
-                this.vaultConfig.presenceShowAll = true;
-                void this.persist().catch(() => {});
-                this.liveBannerSignature = null;
-                this.renderLiveBanner();
-                this.refreshDockViews(true);
-              });
+              void showAllHint;
             }
           }
 
           if (activeDocPeers.length === 0 && !(showAllOnline && onlineRooms.length > 0)) {
             radarBody.createEl("p", {
               text: activeLiveTarget
-                ? "Поки інших учасників у вольті не видно. Щойно колега відкриє нотатку або Canvas на сайті чи в Obsidian, він одразу з’явиться тут."
+                ? "Поки інших учасників у вольті не видно. Щойно колега відкриє документ, він одразу з’явиться тут."
                 : sharedPath
                   ? "Поки ви самі в цій спільній нотатці."
-                  : "Синхронізуйте нотатку з Google Drive або прив’яжіть до /m/, щоб бачити учасників у реальному часі.",
+                  : "Синхронізуйте нотатку з Drive або /m/, щоб бачити учасників у реальному часі.",
               cls: "fc-deck-sub",
             });
           }
+        }
+
+        // 2) Active Document Live Mode toggle card
+        if (file && !isArchiveActive && !platform && liveMode.eligible) {
+          const liveCard = bodySlot.createDiv({ cls: "fc-deck-card" });
+          const lcHead = liveCard.createDiv({ cls: "fc-deck-header" });
+          lcHead.createEl("h4", { text: file.basename, cls: "fc-deck-title" });
+          lcHead.createSpan({
+            text: isCanvasFile ? "Canvas" : isBaseFile ? "Base" : driveId ? "Drive" : activeLink ? `/m/${activeLink.slug}` : "Нотатка",
+            cls: "fc-deck-badge" + (driveId || activeLink ? " fc-deck-badge-ok" : ""),
+          });
+          const liveHero = liveCard.createDiv({
+            cls: "fc-live-hero" + (liveHeroCollapsed ? " is-collapsed" : ""),
+            attr: { "data-state": liveMode.state, "data-collapsed": String(liveHeroCollapsed), role: "status" },
+          });
+          const liveHead = liveHero.createDiv({ cls: "fc-live-mode", attr: { "data-state": liveMode.state } });
+          liveHead.createSpan({ cls: "fc-live-mode-indicator", attr: { "aria-hidden": "true" } });
+          liveHead.createEl("strong", { text: liveMode.label });
+          const liveCollapseBtn = liveHead.createEl("button", {
+            text: liveHeroCollapsed ? "▸ Розгорнути" : "▾ Згорнути",
+            cls: "fc-collapse-chip",
+            attr: { type: "button", "data-fc-collapse": "live-hero", "aria-expanded": String(!liveHeroCollapsed) },
+          });
+          liveCollapseBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            this.vaultConfig.liveHeroCollapsed = !this.vaultConfig.liveHeroCollapsed;
+            void this.persist().catch(() => {});
+            this.refreshDockViews(true);
+          });
+          const guideText = sharedPath
+            ? "Опублікований вольт (FlightClub Shared) синхронізується автоматично кожні 15 секунд."
+            : liveMode.hint;
+          const liveGuideEl = liveHero.createEl("p", { cls: "fc-live-guide", text: guideText });
+          if (liveHeroCollapsed) liveGuideEl.hidden = true;
+          const liveOn = Boolean(this.vaultConfig.liveEnabled);
+          const toggleLiveBtn = fcAppendButton(liveHero, {
+            text: liveOn ? "Призупинити Live Edit" : "Увімкнути Live Edit",
+            icon: "edit",
+            cls: (!liveOn ? "mod-cta " : "") + "fc-deck-btn fc-live-hero-btn",
+            attr: { "aria-pressed": String(liveOn) },
+            onClick: () => void this.toggleLiveMode(),
+          });
+          toggleLiveBtn.disabled = this.liveModeChanging;
+          if (liveHeroCollapsed) toggleLiveBtn.hidden = true;
+        }
+
+        // 3) Quick @ Mentions Search Card
+        const mentionCard = bodySlot.createDiv({ cls: "fc-deck-card" });
+        mentionCard.createEl("h4", { cls: "fc-deck-title", text: "Швидкі згадки @" });
+        this.renderMentionSearch(mentionCard, { file, state: opts.mentionState });
+
+        // 4) Unreviewed Updates + Inline Legend Drawer
+        const renderInlineLegendBar = (parentEl) => {
+          const wrapL = parentEl.createDiv({ cls: "fc-legend-wrap", attr: { "data-fc-counter-legend": "" } });
+          const strip = wrapL.createDiv({ cls: "fc-legend-strip" });
+          const openL = Boolean(this.updatesLegendOpen);
+          const toggleBtn = strip.createEl("button", {
+            text: openL ? "Сховати позначення ▴" : "Позначення та статуси ▾",
+            cls: "fc-text-btn fc-legend-toggle",
+            attr: { type: "button", "data-fc-legend-toggle": "", "aria-expanded": String(openL) },
+          });
+          toggleBtn.addEventListener("click", () => {
+            this.updatesLegendOpen = !this.updatesLegendOpen;
+            this.refreshDockViews(true);
+          });
+          const drawer = wrapL.createDiv({ cls: "fc-legend-drawer", attr: { "data-fc-legend-drawer": "" } });
+          if (!openL) drawer.hidden = true;
+          const counterGrid = drawer.createDiv({ cls: "fc-legend-counters" });
+          for (const [tone, sample, badgeCls, titleText, descText] of [
+            ["folder", "3", "fc-tree-update-badge fc-tree-update-badge-folder", "Папка", "сума оновлень"],
+            ["platform", "•", "fc-tree-update-badge", "Сайт", "автооновлення об’єкта"],
+            ["drive", "•", "fc-tree-update-badge", "Drive", "зміни колег"],
+          ]) {
+            const row = counterGrid.createDiv({ cls: "fc-legend-row" });
+            row.createSpan({ text: sample, cls: badgeCls, attr: { "data-tone": tone } });
+            const copy = row.createDiv({ cls: "fc-legend-copy" });
+            copy.createEl("strong", { text: titleText });
+            copy.createEl("span", { text: descText });
+          }
+          const ttlBar = drawer.createDiv({ cls: "fc-counter-ttl-bar", attr: { "data-fc-counter-ttl": "" } });
+          ttlBar.createSpan({ text: "Позначки в дереві", cls: "fc-counter-ttl-label" });
+          const ttlSegmented = ttlBar.createDiv({ cls: "fc-counter-ttl-segmented", attr: { role: "group", "aria-label": "Час показу позначок у дереві" } });
+          const activeTtl = this.counterTimeoutSec();
+          for (const [sec, labelText, tipText] of [
+            [30, "30с", "Ховати цифри через 30 секунд"],
+            [120, "2хв", "Ховати цифри через 2 хвилини"],
+            [0, "∞", "Тримати цифри, поки файл не відкрито"],
+            [-1, "Вимк", "Не показувати цифри в дереві"],
+          ]) {
+            const btn = ttlSegmented.createEl("button", {
+              text: labelText,
+              cls: "fc-counter-ttl-pill" + (activeTtl === sec ? " is-active" : ""),
+              attr: { type: "button", "data-fc-ttl-sec": String(sec), "aria-pressed": String(activeTtl === sec), title: tipText },
+            });
+            btn.addEventListener("click", () => this.setCounterTimeoutSec(sec));
+          }
+          const equipDetails = drawer.createEl("details", { cls: "fc-legend-subdetails", attr: { "data-fc-legend-group": "equipment" } });
+          equipDetails.createEl("summary", { text: `Статуси майна (${CANONICAL_EQUIPMENT_STATUSES.length})` });
+          const statusWrap = equipDetails.createDiv({ cls: "fc-legend-status-pills" });
+          for (const meta of CANONICAL_EQUIPMENT_STATUSES) {
+            appendStatusPill(statusWrap, meta, "fc-legend-pill", { "data-fc-tree-status": meta.key, title: meta.fullLabel });
+          }
+          const peopleDetails = drawer.createEl("details", { cls: "fc-legend-subdetails", attr: { "data-fc-legend-group": "people" } });
+          peopleDetails.createEl("summary", { text: `Люди та етапи воронки (${CANONICAL_PERSON_STATUSES.length})` });
+          const personWrap = peopleDetails.createDiv({ cls: "fc-legend-status-pills" });
+          for (const meta of CANONICAL_PERSON_STATUSES) {
+            appendStatusPill(personWrap, meta, "fc-tree-person-status fc-legend-pill", { "data-fc-legend-person-status": meta.key, title: meta.fullLabel });
+          }
         };
 
-        // Elevate online participants & Live Radar directly to the TOP under «Учасники та Live»
-        renderPresenceSection();
+        const allEntries = Array.from((this.unreviewedUpdates || new Map()).entries())
+          .filter(([uPath]) => typeof uPath === "string" && !isSyncArchivePath(uPath))
+          .sort(([, a], [, b]) => (Date.parse(b.editedAt || b.updatedAt) || 0) - (Date.parse(a.editedAt || a.updatedAt) || 0));
+        if (allEntries.length > 0) {
+          const platformEntries = allEntries.filter(([uPath, uInfo]) => badgeToneForKind(uInfo?.kind, uPath) === "platform");
+          const driveEntries = allEntries.filter(([uPath, uInfo]) => badgeToneForKind(uInfo?.kind, uPath) === "drive");
+          const filterKind = this.updatesFilterKind || "all";
+          const baseEntries = filterKind === "platform" ? platformEntries : filterKind === "drive" ? driveEntries : allEntries;
+          const updCard = bodySlot.createDiv({ cls: "fc-deck-card fc-unreviewed-card", attr: { "data-fc-unreviewed-card": "" } });
+          const updHead = updCard.createDiv({ cls: "fc-deck-header" });
+          const updTitleWrap = updHead.createDiv({ cls: "fc-upd-head-title" });
+          updTitleWrap.createEl("h4", { text: "Оновлення", cls: "fc-deck-title" });
+          updTitleWrap.createSpan({ text: String(allEntries.length), cls: "fc-upd-count-badge" });
+          fcAppendButton(updHead, {
+            text: "Прочитано все",
+            cls: "fc-text-btn",
+            onClick: () => this.clearAllUnreviewedUpdates(),
+          });
+          const filterRow = updCard.createDiv({ cls: "fc-update-filter-chips" });
+          for (const [fKey, fLabel] of [
+            ["all", `Усі (${allEntries.length})`],
+            ["platform", `Сайт (${platformEntries.length})`],
+            ["drive", `Drive (${driveEntries.length})`],
+          ]) {
+            const chip = filterRow.createEl("button", {
+              text: fLabel,
+              cls: "fc-entity-pill" + (filterKind === fKey ? " is-active" : ""),
+              attr: { type: "button", "data-fc-update-filter": fKey, "aria-pressed": String(filterKind === fKey) },
+            });
+            chip.addEventListener("click", () => {
+              this.updatesFilterKind = fKey;
+              this.updatesShowAll = false;
+              this.refreshDockViews(true);
+            });
+          }
+          let searchInput = null;
+          if (allEntries.length > 8) {
+            const searchWrap = updCard.createDiv({ cls: "fc-update-search-wrap" });
+            searchInput = searchWrap.createEl("input", {
+              cls: "fc-update-search-input",
+              attr: { type: "search", placeholder: "Пошук в оновленнях…", "aria-label": "Фільтр оновлень", "data-fc-updates-search": "" },
+            });
+            searchInput.value = this.updatesSearchQuery || "";
+          }
+          const listContainer = updCard.createDiv({ cls: "fc-update-list-wrap" });
+          const drawUpdatesRows = () => {
+            if (typeof listContainer.empty === "function") listContainer.empty();
+            else if (typeof listContainer.replaceChildren === "function") listContainer.replaceChildren();
+            const q = String(this.updatesSearchQuery || "").trim().toLowerCase();
+            const visibleEntries = q
+              ? baseEntries.filter(([uPath, uInfo]) => uPath.toLowerCase().includes(q) || String(uInfo?.editorName || "").toLowerCase().includes(q) || String(uInfo?.summary || "").toLowerCase().includes(q))
+              : baseEntries;
+            const pageLimit = this.updatesShowAll ? visibleEntries.length : 10;
+            const shownEntries = visibleEntries.slice(0, pageLimit);
+            if (!shownEntries.length) {
+              listContainer.createDiv({ cls: "fc-update-empty", text: q ? "За вашим запитом оновлень не знайдено." : "Непрочитаних оновлень немає." });
+              return;
+            }
+            const updList = listContainer.createEl("ul", { cls: "fc-workspace-activity-list fc-update-list" });
+            for (const [uPath, uInfo] of shownEntries) {
+              const tone = badgeToneForKind(uInfo?.kind, uPath);
+              const itemStatus = this.equipmentStatusForPath(uPath) || this.personStatusForPath(uPath);
+              const li = updList.createEl("li", { cls: "fc-deck-row fc-update-row", attr: { "data-tone": tone } });
+              const topLine = li.createDiv({ cls: "fc-update-row-top" });
+              const titleGroup = topLine.createDiv({ cls: "fc-deck-row-title-wrap" });
+              const stem = uPath.split("/").pop()?.replace(/\.(?:md|canvas|base)$/i, "") || uPath;
+              const folderTrail = uPath.includes("/") ? uPath.slice(0, uPath.lastIndexOf("/")).split("/").slice(-2).join(" / ") : "";
+              const titleBtn = titleGroup.createEl("button", { text: stem, cls: "fc-update-title-btn", attr: { type: "button", title: uPath } });
+              titleBtn.addEventListener("click", () => void this.openUpdateNotePath(uPath));
+              if (itemStatus) {
+                appendStatusPill(titleGroup, itemStatus, itemStatus.category === "person" ? "fc-tree-person-status" : "", {
+                  "data-fc-tree-status": itemStatus.key,
+                  title: itemStatus.tooltip || itemStatus.fullLabel,
+                });
+              }
+              const whenLabel = formatEditorTimestamp(uInfo.editedAt || uInfo.updatedAt);
+              const source = uInfo.kind === "page" || tone === "platform" ? "Сайт" : "Drive";
+              const detailButton = topLine.createEl("button", {
+                text: uInfo.count > 1 ? String(uInfo.count) : "···",
+                cls: "fc-update-detail-button",
+                attr: { type: "button", "data-tone": tone, "aria-label": `Деталі оновлення: ${stem}`, "aria-expanded": "false" },
+              });
+              this.bindUpdateDetails(li, detailButton, { info: uInfo, path: uPath, title: stem, source });
+              const subLine = li.createDiv({ cls: "fc-update-row-sub" });
+              subLine.createSpan({ cls: "fc-update-row-meta", text: [source, uInfo.editorName || folderTrail, whenLabel].filter(Boolean).join(" · ") });
+              const rowBtns = subLine.createDiv({ cls: "fc-update-row-actions" });
+              const dismissUpdBtn = rowBtns.createEl("button", {
+                text: "✓",
+                cls: "fc-row-action-btn fc-row-action-icon",
+                attr: { type: "button", "aria-label": `Позначити прочитаним: ${stem}`, title: "Позначити прочитаним" },
+              });
+              dismissUpdBtn.addEventListener("click", () => this.markNoteReviewed(uPath));
+            }
+            if (visibleEntries.length > 10) {
+              fcAppendButton(listContainer, {
+                text: this.updatesShowAll ? "Згорнути список" : `Показати ще (${visibleEntries.length - 10})`,
+                cls: "fc-text-btn fc-show-more-btn",
+                onClick: () => { this.updatesShowAll = !this.updatesShowAll; drawUpdatesRows(); },
+              });
+            }
+          };
+          drawUpdatesRows();
+          if (searchInput) {
+            searchInput.addEventListener("input", () => { this.updatesSearchQuery = searchInput.value; drawUpdatesRows(); });
+          }
+          renderInlineLegendBar(updCard);
+        } else {
+          const emptyLegendWrap = bodySlot.createDiv({ cls: "fc-deck-card fc-legend-compact-card" });
+          renderInlineLegendBar(emptyLegendWrap);
+        }
 
-        // Active Note / Canvas / Base Card
-        const noteCard = bodySlot.createDiv({ cls: "fc-deck-card" });
-        const noteHeader = noteCard.createDiv({ cls: "fc-deck-header" });
-        noteHeader.createEl("h4", {
-          text: file ? `${isArchiveActive ? "📦" : isCanvasFile ? "🎨" : isBaseFile ? "🗃️" : "📄"} ${file.basename}` : "📄 Відкрийте нотатку, Canvas або Base",
+        // 5) Collapsible History Panel inside Collaboration tab
+        const histDetails = bodySlot.createEl("details", {
+          cls: "fc-deck-card fc-dock-disclosure",
+          attr: rawTab === "history" ? { open: "" } : {},
+        });
+        histDetails.createEl("summary", { cls: "fc-dock-details-summary", text: "Історія змін документа" });
+        this.renderHistoryPanel(histDetails.createDiv(), file, activeLink, { showTitle: false });
+      } else {
+        // ── TAB 3: ПУБЛІКАЦІЯ & КЛУБ ────────────────────────────────────────────
+        if (file && !isArchiveActive) {
+          this.renderEventPublishSidebarCard?.(bodySlot, file, hasToken);
+        }
+
+        const pubCard = bodySlot.createDiv({ cls: "fc-deck-card" });
+        const pubHeader = pubCard.createDiv({ cls: "fc-deck-header" });
+        pubHeader.createEl("h4", {
+          text: file ? file.basename : "Відкрийте нотатку для публікації",
           cls: "fc-deck-title",
         });
-        if (!file && !sharedPath) {
-          noteCard.createEl("p", {
-            cls: "fc-deck-sub",
-            text: "Виберіть файл у дереві зліва для Live Edit, учасників та швидких дій документа.",
-          });
-        }
         if (isArchiveActive) {
-          noteHeader.createSpan({
-            text: "Sync Archive",
-            cls: "fc-deck-badge fc-deck-badge-warn",
-          });
+          pubHeader.createSpan({ text: "Sync Archive", cls: "fc-deck-badge fc-deck-badge-warn" });
         } else if (driveId && activeLink) {
-          noteHeader.createSpan({
-            text: `📁 Drive + /m/${activeLink.slug}`,
-            cls: "fc-deck-badge fc-deck-badge-ok",
-          });
+          pubHeader.createSpan({ text: `Drive + /m/${activeLink.slug}`, cls: "fc-deck-badge fc-deck-badge-ok" });
         } else if (driveBase || driveId) {
-          noteHeader.createSpan({
-            text: "📁 Google Drive",
-            cls: "fc-deck-badge fc-deck-badge-ok",
-          });
+          pubHeader.createSpan({ text: "Google Drive", cls: "fc-deck-badge fc-deck-badge-ok" });
         } else if (activeLink) {
-          noteHeader.createSpan({
-            text: `/m/${activeLink.slug}`,
-            cls: "fc-deck-badge fc-deck-badge-ok",
-          });
-        } else if (inDriveRoot) {
-          noteHeader.createSpan({
-            text: "📁 Нова для Drive",
-            cls: "fc-deck-badge",
-          });
+          pubHeader.createSpan({ text: `/m/${activeLink.slug}`, cls: "fc-deck-badge fc-deck-badge-ok" });
         } else if (file) {
-          noteHeader.createSpan({ text: platform ? LABEL[platform.kind] : "Локальна нотатка", cls: "fc-deck-badge" });
+          pubHeader.createSpan({ text: platform ? LABEL[platform.kind] : "Локальна нотатка", cls: "fc-deck-badge" });
         }
 
-        if (isArchiveActive && file) {
-          const archiveBanner = noteCard.createDiv({
-            cls: "fc-archive-banner",
-            attr: { "data-fc-archive-banner": "" },
-          });
-          archiveBanner.createEl("div", {
-            cls: "fc-archive-banner-title",
-            text: "Ви переглядаєте резервну копію із Sync Archive",
-          });
-          archiveBanner.createEl("p", {
-            cls: "fc-archive-banner-copy",
-            text: "Це архівний знімок минулого конфлікту. Зміни тут не синхронізуються в Live Edit та Google Drive.",
-          });
-          const liveCandidate = this.resolveLiveFileFromArchive(file);
-          const openLiveBtn = archiveBanner.createEl("button", {
-            text: liveCandidate ? `↗ Відкрити актуальний файл (${liveCandidate.basename})` : "↗ Знайти актуальний файл",
-            cls: "mod-cta fc-deck-btn",
-            attr: { type: "button", title: liveCandidate?.path || "" },
-          });
-          openLiveBtn.addEventListener("click", async () => {
-            const target = this.resolveLiveFileFromArchive(file);
-            if (target instanceof TFile) {
-              const leaf = this.app.workspace.getLeaf?.(false) || this.app.workspace.getLeaf?.();
-              if (leaf?.openFile) await leaf.openFile(target, { active: true });
-              this.attachLiveSessionToActiveNote?.(target);
-              if (this.liveSession?.file === target) {
-                this.liveSession.forceRefresh = true;
-                this.queueLiveCheck?.(this.liveSession, 50);
-              }
-              return;
-            }
-            const meta = this.app?.metadataCache?.getFileCache?.(file)?.frontmatter;
-            const archivedDriveId = typeof FC_YAML_PROPS !== "undefined" ? FC_YAML_PROPS.extractDriveIdFromMeta(meta) : null;
-            if (archivedDriveId) {
-              await this.openDriveFileInObsidian(archivedDriveId, null);
-              return;
-            }
-            new Notice("Актуальну копію не знайдено локально — запустіть «Звірити з Drive» у вкладці Drive.");
+        if (!file && !sharedPath) {
+          pubCard.createEl("p", {
+            cls: "fc-deck-sub",
+            text: "Виберіть нотатку або картку події у дереві, щоб опублікувати її на flightclub.com.ua чи налаштувати доступ.",
           });
         }
-
-        const appendStatusPill = (parentEl, meta, extraCls = "", attr = {}) => {
-          const pill = parentEl.createSpan({
-            cls: `fc-tree-item-status ${meta.cls}${extraCls ? " " + extraCls : ""}`,
-            attr,
-          });
-          pill.createSpan({ cls: "fc-status-dot", attr: { "aria-hidden": "true" } });
-          pill.createSpan({ text: meta.label });
-          return pill;
-        };
 
         if (file && platform?.kind === "item") {
           const itemStatus = this.equipmentStatusForPath(file.path);
           if (itemStatus) {
-            appendStatusPill(noteHeader, itemStatus, "fc-note-item-status", {
-              "data-fc-tree-status": itemStatus.key,
-              title: `Живий статус майна із сайту: ${itemStatus.label}`,
-            });
+            appendStatusPill(pubHeader, itemStatus, "fc-note-item-status", { "data-fc-tree-status": itemStatus.key });
             const metaBits = [
               `Статус: ${itemStatus.label}`,
               itemStatus.holder ? `Утримувач: ${itemStatus.holder}` : null,
               itemStatus.hub ? `Осередок: ${itemStatus.hub}` : null,
               itemStatus.condition ? `Стан: ${itemStatus.condition}` : null,
             ].filter(Boolean);
-            noteCard.createEl("div", {
-              cls: "fc-deck-row-meta fc-item-status-meta",
-              text: metaBits.join(" · "),
-              attr: { "data-fc-item-status-summary": itemStatus.key },
-            });
+            pubCard.createEl("div", { cls: "fc-deck-row-meta fc-item-status-meta", text: metaBits.join(" · "), attr: { "data-fc-item-status-summary": itemStatus.key } });
           }
         } else if (file) {
           const personStatus = this.personStatusForPath(file.path);
           if (personStatus) {
-            appendStatusPill(noteHeader, personStatus, "fc-tree-person-status fc-note-item-status", {
-              "data-fc-tree-status": personStatus.key,
-              title: personStatus.tooltip || personStatus.fullLabel,
-            });
+            appendStatusPill(pubHeader, personStatus, "fc-tree-person-status fc-note-item-status", { "data-fc-tree-status": personStatus.key, title: personStatus.tooltip || personStatus.fullLabel });
             const metaBits = [
               personStatus.funnel ? personStatus.funnel.fullLabel : null,
               personStatus.team ? personStatus.team.fullLabel : null,
@@ -14272,171 +15401,71 @@ module.exports = class FlightClubMarkdown extends Plugin {
               personStatus.city ? `Осередок: ${personStatus.city}` : null,
             ].filter(Boolean);
             if (metaBits.length) {
-              noteCard.createEl("div", {
-                cls: "fc-deck-row-meta fc-item-status-meta",
-                text: metaBits.join(" · "),
-                attr: { "data-fc-person-status-summary": personStatus.key, title: personStatus.tooltip || "" },
-              });
+              pubCard.createEl("div", { cls: "fc-deck-row-meta fc-item-status-meta", text: metaBits.join(" · "), attr: { "data-fc-person-status-summary": personStatus.key } });
             }
           }
           const relatedPerson = this.relatedPersonNotesForPath?.(file.path);
           if (relatedPerson) {
-            const crossWrap = noteCard.createDiv({ cls: "fc-person-crosslinks", attr: { "data-fc-person-crosslinks": "" } });
+            const crossWrap = pubCard.createDiv({ cls: "fc-person-crosslinks", attr: { "data-fc-person-crosslinks": "" } });
             const openRelated = async (targetFile) => {
               const leaf = this.app.workspace.getLeaf?.(false) || this.app.workspace.getLeaf?.();
               if (leaf?.openFile) await leaf.openFile(targetFile, { active: true });
             };
             if (relatedPerson.trainingFile) {
-              const b = crossWrap.createEl("button", {
-                text: `🎓 Профіль навчання: ${relatedPerson.trainingFile.basename}`,
-                cls: "fc-deck-btn fc-person-crosslink-btn",
-                attr: { type: "button", title: relatedPerson.trainingFile.path },
-              });
-              b.addEventListener("click", () => void openRelated(relatedPerson.trainingFile));
+              fcAppendButton(crossWrap, { text: `Профіль навчання: ${relatedPerson.trainingFile.basename}`, icon: "file", cls: "fc-deck-btn fc-person-crosslink-btn", attr: { title: relatedPerson.trainingFile.path }, onClick: () => void openRelated(relatedPerson.trainingFile) });
             }
             if (relatedPerson.platformFile) {
-              const b = crossWrap.createEl("button", {
-                text: `👤 Картка у Platform: ${relatedPerson.platformFile.basename}`,
-                cls: "fc-deck-btn fc-person-crosslink-btn",
-                attr: { type: "button", title: relatedPerson.platformFile.path },
-              });
-              b.addEventListener("click", () => void openRelated(relatedPerson.platformFile));
+              fcAppendButton(crossWrap, { text: `Картка у Platform: ${relatedPerson.platformFile.basename}`, icon: "external", cls: "fc-deck-btn fc-person-crosslink-btn", attr: { title: relatedPerson.platformFile.path }, onClick: () => void openRelated(relatedPerson.platformFile) });
             }
             for (const ff of relatedPerson.formFiles) {
-              const b = crossWrap.createEl("button", {
-                text: `📋 Анкета: ${ff.basename}`,
-                cls: "fc-deck-btn fc-person-crosslink-btn",
-                attr: { type: "button", title: ff.path },
-              });
-              b.addEventListener("click", () => void openRelated(ff));
+              fcAppendButton(crossWrap, { text: `Анкета: ${ff.basename}`, icon: "file", cls: "fc-deck-btn fc-person-crosslink-btn", attr: { title: ff.path }, onClick: () => void openRelated(ff) });
             }
           }
         }
 
-        if (editTarget?.sub && !platform) {
-          noteCard.createEl("p", { text: editTarget.sub, cls: "fc-deck-sub" });
-        }
+        if (editTarget?.sub && !platform) pubCard.createEl("p", { text: editTarget.sub, cls: "fc-deck-sub" });
 
         if (file && platform && platform.id) {
           const pUrl = refUrl(platform.kind + ":" + platform.id);
           if (pUrl) {
-            const pGrid = noteCard.createDiv({ cls: "fc-deck-grid" });
-            const pOpenBtn = pGrid.createEl("button", {
-              text: "✏️ Відкрити картку на сайті",
-              cls: "mod-cta fc-deck-btn",
-              attr: { type: "button", title: pUrl },
-            });
-            pOpenBtn.addEventListener("click", () => this.openSite(pUrl));
-            const pCopyBtn = pGrid.createEl("button", {
-              text: "📋 Копіювати лінк",
-              cls: "fc-deck-btn",
-              attr: { type: "button", title: pUrl },
-            });
-            pCopyBtn.addEventListener("click", () => void this.copyTextToClipboard(pUrl, "Посилання скопійовано"));
+            const pGrid = pubCard.createDiv({ cls: "fc-deck-grid" });
+            fcAppendButton(pGrid, { text: "Відкрити картку на сайті", icon: "edit", cls: "mod-cta fc-deck-btn", attr: { title: pUrl }, onClick: () => this.openSite(pUrl) });
+            fcAppendButton(pGrid, { text: "Копіювати лінк", icon: "copy", cls: "fc-deck-btn", attr: { title: pUrl }, onClick: () => void this.copyTextToClipboard(pUrl, "Посилання скопійовано") });
+            fcBalanceGrid(pGrid);
           }
         }
 
         if (file && !platform && !isArchiveActive) {
-          const btnGrid = noteCard.createDiv({ cls: "fc-deck-grid fc-note-actions-grid" });
+          const btnGrid = pubCard.createDiv({ cls: "fc-deck-grid fc-note-actions-grid" });
           if (editTarget) {
-            const editBtn = btnGrid.createEl("button", {
-              text: editTarget.label,
-              cls: "mod-cta fc-deck-btn",
-              attr: { type: "button", title: editTarget.url },
-            });
-            editBtn.addEventListener("click", () => this.openSite(editTarget.url));
+            const cleanEditLabel = String(editTarget.label || "Редагувати на сайті").replace(/^[✏️📝🌐🔗🚀\s]+/, "").trim() || "Редагувати на сайті";
+            fcAppendButton(btnGrid, { text: cleanEditLabel, icon: "edit", cls: "mod-cta fc-deck-btn", attr: { title: editTarget.url }, onClick: () => this.openSite(editTarget.url) });
           }
-
           if (driveUrl) {
-            const gDriveBtn = btnGrid.createEl("button", {
-              text: "🗂️ Google Drive",
-              cls: "fc-deck-btn",
-              attr: { type: "button", title: driveUrl },
-            });
-            gDriveBtn.addEventListener("click", () => this.openSite(driveUrl));
+            fcAppendButton(btnGrid, { text: "Google Drive", icon: "external", cls: "fc-deck-btn", attr: { title: driveUrl }, onClick: () => this.openSite(driveUrl) });
           }
-
-          if (driveBase || inDriveRoot) {
-            const noteDirtyOrPaused = Boolean(this.dirtyDriveFiles?.has(file.path) || !this.vaultConfig.liveEnabled || !driveBase);
-            if (driveBase) {
-              const pullOneBtn = btnGrid.createEl("button", {
-                text: this.driveDownloading ? "⏳ Оновлення…" : "⬇️ Підтягнути з Drive",
-                cls: "fc-deck-btn fc-btn-pull-drive",
-                attr: { type: "button", title: "Завантажити актуальну версію цього файлу з Google Drive у локальний Vault", "data-fc-pull-active": "" },
-              });
-              pullOneBtn.disabled = Boolean(this.driveDownloading || this.publishingDrive || !hasToken);
-              pullOneBtn.addEventListener("click", () => void this.pullActiveFileFromDrive(file));
-            }
-            if (this.vaultConfig.pairedCanEdit || this.accountIsAdmax) {
-              const pushOneBtn = btnGrid.createEl("button", {
-                text: this.publishingDrive ? "⏳ Відправка…" : "⬆️ Залити правки в Drive",
-                cls: (noteDirtyOrPaused ? "mod-cta " : "") + "fc-deck-btn fc-btn-push-drive",
-                attr: { type: "button", title: "Відправити локальні правки цього файлу на головний Google Drive (зручно коли Live Edit вимкнено)", "data-fc-push-active": "" },
-              });
-              pushOneBtn.disabled = Boolean(this.driveDownloading || this.publishingDrive || !hasToken);
-              pushOneBtn.addEventListener("click", () => void this.pushActiveFileToDrive(file));
-            }
-          }
-
           if (activeLink) {
-            const saveBtn = btnGrid.createEl("button", {
-              text: `💾 Зберегти /m/${activeLink.slug}`,
-              cls: editTarget ? "fc-deck-btn" : "mod-cta fc-deck-btn",
-              attr: { type: "button" },
-            });
-            saveBtn.addEventListener("click", () => void this.directSaveNote(file));
+            fcAppendButton(btnGrid, { text: `Зберегти /m/${activeLink.slug}`, icon: "publish", cls: editTarget ? "fc-deck-btn" : "mod-cta fc-deck-btn", onClick: () => void this.directSaveNote(file) });
           } else {
-            const secDetails = noteCard.createEl("details", { cls: "fc-secondary-actions" });
-            secDetails.createEl("summary", { text: "Веб-сторінка /m/ і додатково…" });
-            const secGrid = secDetails.createDiv({ cls: "fc-deck-grid" });
-            const pubBtn = secGrid.createEl("button", {
-              text: "💾 Опублікувати в /m/",
-              cls: "fc-deck-btn",
-              attr: { type: "button" },
-            });
-            pubBtn.addEventListener("click", () => void this.directSaveNote(file));
-            const attachBtn = secGrid.createEl("button", {
-              text: "📎 Прив’язати наявну /m/",
-              cls: "fc-deck-btn",
-              attr: { type: "button" },
-            });
-            attachBtn.addEventListener("click", () => this.attachLink(file));
+            fcAppendButton(btnGrid, { text: "Опублікувати в /m/", icon: "publish", cls: editTarget ? "fc-deck-btn" : "mod-cta fc-deck-btn", onClick: () => void this.directSaveNote(file) });
+            fcAppendButton(btnGrid, { text: "Прив’язати /m/", icon: "plus", cls: "fc-deck-btn", onClick: () => this.attachLink(file) });
           }
+          fcBalanceGrid(btnGrid);
 
           if (editTarget || driveUrl || activeLink) {
-            const copyStrip = noteCard.createDiv({ cls: "fc-copy-strip" });
-            if (editTarget?.url) {
-              const copySiteBtn = copyStrip.createEl("button", {
-                text: "📋 Копіювати лінк сайту",
-                cls: "fc-deck-btn",
-                attr: { type: "button", title: editTarget.url },
-              });
-              copySiteBtn.addEventListener("click", () => void this.copyTextToClipboard(editTarget.url, "Лінк сторінки сайту скопійовано"));
-            }
-            if (driveUrl) {
-              const copyDriveBtn = copyStrip.createEl("button", {
-                text: "🔗 Копіювати Drive лінк",
-                cls: "fc-deck-btn",
-                attr: { type: "button", title: driveUrl },
-              });
-              copyDriveBtn.addEventListener("click", () => void this.copyTextToClipboard(driveUrl, "Лінк Google Drive скопійовано"));
-            }
-            if (activeLink) {
-              const copyShareBtn = copyStrip.createEl("button", {
-                text: "🌐 Копіювати /m/",
-                cls: "fc-deck-btn",
-                attr: { type: "button", title: pageUrl(activeLink.slug) },
-              });
-              copyShareBtn.addEventListener("click", () => void this.copyLink(file));
-            }
+            const copyStrip = pubCard.createDiv({ cls: "fc-copy-strip" });
+            if (editTarget?.url) fcAppendButton(copyStrip, { text: "Лінк сайту", icon: "copy", cls: "fc-deck-btn", attr: { title: editTarget.url }, onClick: () => void this.copyTextToClipboard(editTarget.url, "Лінк сторінки сайту скопійовано") });
+            if (driveUrl) fcAppendButton(copyStrip, { text: "Лінк Drive", icon: "copy", cls: "fc-deck-btn", attr: { title: driveUrl }, onClick: () => void this.copyTextToClipboard(driveUrl, "Лінк Google Drive скопійовано") });
+            if (activeLink) fcAppendButton(copyStrip, { text: "Лінк /m/", icon: "copy", cls: "fc-deck-btn", attr: { title: pageUrl(activeLink.slug) }, onClick: () => void this.copyLink(file) });
+            fcBalanceGrid(copyStrip);
           }
         }
 
         if (file && !platform && !isArchiveActive && hasToken) {
-          const shareDetails = noteCard.createEl("details", { cls: "fc-secondary-actions" });
+          const shareDetails = pubCard.createEl("details", { cls: "fc-secondary-actions" });
           const existingPage = this.catalogPageForFile(file, driveId);
-          const shareStatusBadge = existingPage?.is_public ? " · 🌐 Публічно" : existingPage?.is_published ? " · Опубліковано" : "";
-          shareDetails.createEl("summary", { text: `🔒 Налаштувати ролі та шерінг${shareStatusBadge}` });
+          const shareStatusBadge = existingPage?.is_public ? " · Публічно" : existingPage?.is_published ? " · Опубліковано" : "";
+          shareDetails.createEl("summary", { text: `Налаштувати ролі та шерінг${shareStatusBadge}` });
           const shareBody = shareDetails.createDiv({ cls: "fc-share-card" });
           const draftKey = file.path + "::" + (driveId || activeLink?.slug || "");
           let sDraft = this.shareDrafts?.get(draftKey);
@@ -14450,11 +15479,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
             };
             this.shareDrafts?.set(draftKey, sDraft);
           }
-          const clearEl = el => {
-            if (typeof el.empty === "function") el.empty();
-            else if (typeof el.replaceChildren === "function") el.replaceChildren();
-            else if (Array.isArray(el.children)) el.children.length = 0;
-          };
+          const clearEl = el => { if (typeof el.empty === "function") el.empty(); else if (typeof el.replaceChildren === "function") el.replaceChildren(); else if (Array.isArray(el.children)) el.children.length = 0; };
           const renderShareControls = () => {
             clearEl(shareBody);
             const slugRow = shareBody.createDiv({ cls: "fc-share-slug-row" });
@@ -14463,24 +15488,22 @@ module.exports = class FlightClubMarkdown extends Plugin {
             slugInp.value = sDraft.slug;
             slugInp.readOnly = Boolean(existingPage?.slug || activeLink?.slug);
             slugInp.addEventListener("input", () => { sDraft.slug = slugInp.value.toLowerCase().replace(/[^a-z0-9_-]/g, ""); slugInp.value = sDraft.slug; });
-
             const toggles = shareBody.createDiv({ cls: "fc-share-toggles" });
             const pubLbl = toggles.createEl("label");
             const pubCb = pubLbl.createEl("input", { attr: { type: "checkbox" } });
             pubCb.checked = sDraft.is_published;
             pubCb.addEventListener("change", () => { sDraft.is_published = pubCb.checked; });
             pubLbl.createSpan({ text: "Опубліковано" });
-
             const globLbl = toggles.createEl("label");
             const globCb = globLbl.createEl("input", { attr: { type: "checkbox" } });
             globCb.checked = sDraft.is_public;
             globCb.addEventListener("change", () => { sDraft.is_public = globCb.checked; });
-            globLbl.createSpan({ text: "🌐 Публічно (без входу)" });
+            globLbl.createSpan({ text: "Публічно (без входу)" });
 
             const rPills = shareBody.createDiv({ cls: "fc-role-pills" });
-            const allBtn = rPills.createEl("button", { text: "🌐 Усі", cls: "fc-role-pill", attr: { type: "button", "aria-pressed": String(sDraft.target_roles.length === 0) } });
+            const allBtn = rPills.createEl("button", { text: "Усі", cls: "fc-role-pill", attr: { type: "button", "aria-pressed": String(sDraft.target_roles.length === 0) } });
             allBtn.addEventListener("click", () => { sDraft.target_roles = []; renderShareControls(); });
-            for (const [rk, rl] of [["cadet", "🎓 Курсанти"], ["miltech", "🔧 MilTech"], ["instructor", "🛡️ Інструктори"], ["admin", "⚡ Адміни"], ["quarantine", "⏳ Кандидати"]]) {
+            for (const [rk, rl] of [["cadet", "Курсанти"], ["miltech", "MilTech"], ["instructor", "Інструктори"], ["admin", "Адміни"], ["quarantine", "Кандидати"]]) {
               const on = sDraft.target_roles.includes(rk);
               const b = rPills.createEl("button", { text: rl, cls: "fc-role-pill", attr: { type: "button", "aria-pressed": String(on) } });
               b.addEventListener("click", () => {
@@ -14488,6 +15511,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
                 renderShareControls();
               });
             }
+            fcBalanceGrid(rPills);
 
             const effectiveHubCities = normalizeHubCities(this.hubCities, { fromServer: true });
             if (effectiveHubCities.length) {
@@ -14500,35 +15524,35 @@ module.exports = class FlightClubMarkdown extends Plugin {
                   renderShareControls();
                 });
               }
+              fcBalanceGrid(hPills);
             }
 
             const sMsg = shareBody.createDiv({ cls: "fc-deck-sub", attr: { role: "status" } });
             const actRow = shareBody.createDiv({ cls: "fc-deck-grid" });
-            const saveShareBtn = actRow.createEl("button", {
-              text: "💾 Зберегти ролі, YAML і скопіювати",
+            const saveShareBtn = fcAppendButton(actRow, {
+              text: "Зберегти ролі та YAML",
+              icon: "check",
               cls: "mod-cta fc-deck-btn",
-              attr: { type: "button" },
+              onClick: async () => {
+                saveShareBtn.disabled = true;
+                sMsg.setText("Зберігаємо доступ і оновлюємо YAML…");
+                try {
+                  const saved = await this.saveNoteShareSettings(file, sDraft);
+                  sMsg.setText("Збережено · " + (saved.shareUrl || editTarget?.url || ""));
+                } catch (e) {
+                  sMsg.setText(e instanceof Error ? e.message : "Не вдалося зберегти налаштування.");
+                } finally { saveShareBtn.disabled = false; }
+              },
             });
-            saveShareBtn.addEventListener("click", async () => {
-              saveShareBtn.disabled = true;
-              sMsg.setText("Зберігаємо доступ і оновлюємо YAML…");
-              try {
-                const saved = await this.saveNoteShareSettings(file, sDraft);
-                sMsg.setText("✓ Збережено · " + (saved.shareUrl || editTarget?.url || ""));
-              } catch (e) {
-                sMsg.setText(e instanceof Error ? e.message : "Не вдалося зберегти налаштування.");
-              } finally { saveShareBtn.disabled = false; }
-            });
-
             if (driveId) {
-              const aclBtn = actRow.createEl("button", {
-                text: "🛡️ Права папки Drive на сайті",
+              fcAppendButton(actRow, {
+                text: "Права папки Drive",
+                icon: "lock",
                 cls: "fc-deck-btn",
-                attr: { type: "button", title: editTarget?.vaultShareUrl || "" },
+                attr: { title: editTarget?.vaultShareUrl || "" },
+                onClick: () => this.openSite(editTarget?.vaultShareUrl || `${SITE}/markdown?view=vault&file=${encodeURIComponent(driveId)}&edit=1&share=1`),
               });
-              aclBtn.addEventListener("click", () => this.openSite(editTarget?.vaultShareUrl || `${SITE}/markdown?view=vault&file=${encodeURIComponent(driveId)}&edit=1&share=1`));
-
-              const loadAclBtn = actRow.createEl("button", { text: "🔎 Перевірити права Drive", cls: "fc-deck-btn", attr: { type: "button" } });
+              const loadAclBtn = fcAppendButton(actRow, { text: "Перевірити права Drive", icon: "search", cls: "fc-deck-btn" });
               const aclList = shareBody.createDiv({ cls: "fc-share-acl-list" });
               const drawAcl = (info) => {
                 clearEl(aclList);
@@ -14537,355 +15561,120 @@ module.exports = class FlightClubMarkdown extends Plugin {
                 if (!info.driveRules?.length) aclList.createDiv({ cls: "fc-deck-row-meta", text: "Спецправил папки немає (доступ ADMAX)." });
                 for (const rule of info.driveRules || []) {
                   const it = aclList.createDiv({ cls: "fc-share-acl-item" });
-                  it.createSpan({ text: `${rule.effect === "deny" ? "🚫" : "✅"} [${rule.section}] ${(rule.roles || []).join(", ")} · ${(rule.ops || []).join(", ")}` });
+                  it.createSpan({ text: `${rule.effect === "deny" ? "Заборона" : "Дозвіл"} · [${rule.section}] ${(rule.roles || []).join(", ")} · ${(rule.ops || []).join(", ")}` });
                 }
               };
               const cachedAcl = this.shareStateCache?.get(driveId);
               if (cachedAcl) drawAcl(cachedAcl);
               loadAclBtn.addEventListener("click", async () => {
                 loadAclBtn.disabled = true;
-                try {
-                  const info = await this.loadDriveShareInfo(driveId, file.path);
-                  drawAcl(info);
-                } catch (e) { sMsg.setText(e instanceof Error ? e.message : "Не вдалося завантажити права Drive."); }
+                try { drawAcl(await this.loadDriveShareInfo(driveId, file.path)); }
+                catch (e) { sMsg.setText(e instanceof Error ? e.message : "Не вдалося завантажити права Drive."); }
                 finally { loadAclBtn.disabled = false; }
               });
             }
+            fcBalanceGrid(actRow);
           };
           renderShareControls();
         }
 
-        const liveHeroCollapsed = Boolean(this.vaultConfig.liveHeroCollapsed);
-        if (showLivePanels && !isArchiveActive) {
-        const liveHero = noteCard.createDiv({
-          cls: "fc-live-hero" + (liveHeroCollapsed ? " is-collapsed" : ""),
-          attr: { "data-state": liveMode.state, "data-collapsed": String(liveHeroCollapsed), role: "status" },
-        });
-        const liveHead = liveHero.createDiv({ cls: "fc-live-mode", attr: { "data-state": liveMode.state } });
-        liveHead.createSpan({ cls: "fc-live-mode-indicator", attr: { "aria-hidden": "true" } });
-        liveHead.createEl("strong", { text: liveMode.label });
-        const liveCollapseBtn = liveHead.createEl("button", {
-          text: liveHeroCollapsed ? "▸ Розгорнути" : "▾ Згорнути",
-          cls: "fc-collapse-chip",
-          attr: {
-            type: "button",
-            "data-fc-collapse": "live-hero",
-            "aria-expanded": String(!liveHeroCollapsed),
-            title: liveHeroCollapsed ? "Розгорнути керування Live Edit" : "Згорнути керування Live Edit",
-          },
-        });
-        liveCollapseBtn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          this.vaultConfig.liveHeroCollapsed = !this.vaultConfig.liveHeroCollapsed;
-          void this.persist().catch(() => {});
-          this.refreshDockViews(true);
-        });
-        const guideText = sharedPath
-          ? "Опублікований вольт (FlightClub Shared) синхронізується автоматично кожні 15 секунд."
-          : liveMode.hint;
-        const liveGuideEl = liveHero.createEl("p", { cls: "fc-live-guide", text: guideText });
-        if (liveHeroCollapsed) liveGuideEl.hidden = true;
-
-        if (file && !platform && liveMode.eligible) {
-          const liveOn = Boolean(this.vaultConfig.liveEnabled);
-          const toggleLiveBtn = liveHero.createEl("button", {
-            text: liveOn
-              ? "⏸ Призупинити Live Edit (редагувати локально)"
-              : "🟢 Увімкнути Live Edit (редагувати наживо)",
-            cls: (!liveOn ? "mod-cta " : "") + "fc-deck-btn fc-live-hero-btn",
-            attr: { type: "button", "aria-pressed": String(liveOn) },
+        // Team Plugins Card
+        if (hasToken && (teamPluginsAll.length > 0 || this.accountIsAdmax)) {
+          const teamCard = bodySlot.createDiv({ cls: "fc-deck-card fc-sync-card fc-team-plugins-card", attr: { "data-fc-team-plugins-card": "" } });
+          const teamHead = teamCard.createDiv({ cls: "fc-deck-header" });
+          teamHead.createEl("h4", { cls: "fc-deck-title", text: `Плагіни команди (${teamPluginsAll.length})` });
+          if (this.teamPluginsCatalog?.updatedBy) {
+            teamHead.createSpan({ cls: "fc-deck-badge", text: `ADMAX · ${this.teamPluginsCatalog.updatedBy}` });
+          }
+          const installedIds = new Set(Object.keys(this.app?.plugins?.manifests || {}).map((id) => id.toLowerCase()));
+          const enabledIds = new Set(Array.from(this.app?.plugins?.enabledPlugins || []).map((id) => String(id).toLowerCase()));
+          let installedCnt = 0, missingCnt = 0, disabledCnt = 0;
+          for (const tp of teamPluginsAll) {
+            const key = String(tp.id || "").toLowerCase();
+            if (!installedIds.has(key)) missingCnt++;
+            else if (enabledIds.size && !enabledIds.has(key)) disabledCnt++;
+            else installedCnt++;
+          }
+          const summaryText = teamPluginsAll.length === 0
+            ? "Спільний список плагінів ще не налаштований."
+            : missingCnt === 0 && disabledCnt === 0
+              ? `Усі ${teamPluginsAll.length} плагінів команди встановлені й готові.`
+              : `Установлено: ${installedCnt} із ${teamPluginsAll.length}` + (missingCnt ? ` · Відсутні: ${missingCnt}` : "") + (disabledCnt ? ` · Вимкнені: ${disabledCnt}` : "");
+          teamCard.createEl("p", { cls: "fc-team-plugins-summary", text: summaryText });
+          const teamBtns = teamCard.createDiv({ cls: "fc-deck-grid" });
+          if (teamPluginsAll.length > 0) {
+            fcAppendButton(teamBtns, {
+              text: missingCnt > 0 ? `Встановити з Community (${missingCnt + disabledCnt})` : disabledCnt > 0 ? `Увімкнути (${disabledCnt})` : "Плагіни команди",
+              icon: "plugin",
+              cls: (missingCnt > 0 || disabledCnt > 0 ? "mod-cta " : "") + "fc-deck-btn",
+              attr: { "data-fc-open-team-plugins-installer": "" },
+              onClick: () => void this.openTeamPluginsInstallerModal(),
+            });
+          }
+          const manageBtn = fcAppendButton(teamBtns, {
+            text: "Налаштувати список",
+            icon: "sliders",
+            cls: (teamPluginsAll.length === 0 ? "mod-cta " : "") + "fc-deck-btn",
+            attr: { "data-fc-open-team-plugins-admin": "", "data-fc-admax-team-plugins": "" },
+            onClick: () => void this.openAdmaxTeamPluginsModal(),
           });
-          toggleLiveBtn.disabled = this.liveModeChanging;
-          if (liveHeroCollapsed) toggleLiveBtn.hidden = true;
-          toggleLiveBtn.addEventListener("click", () => void this.toggleLiveMode());
-        }
+          manageBtn.hidden = !this.accountIsAdmax;
+          fcBalanceGrid(teamBtns);
         }
 
-        if (file && !isArchiveActive) {
-          this.renderEventPublishSidebarCard?.(bodySlot, file, hasToken);
-        }
-
-        const renderInlineLegendBar = (parentEl) => {
-          const wrap = parentEl.createDiv({
-            cls: "fc-legend-wrap",
-            attr: { "data-fc-counter-legend": "" },
+        // Club Tools & Quick Access
+        const canManageCadetSync = Boolean(this.accountIsAdmax || /^admin$/i.test(String(this.vaultConfig?.pairedRole || "")));
+        const clubCard = bodySlot.createDiv({ cls: "fc-deck-card" });
+        clubCard.createEl("h4", { cls: "fc-deck-title", text: "Інструменти Клубу" });
+        const clubBtns = clubCard.createDiv({ cls: "fc-deck-grid" });
+        if (hasToken && canManageCadetSync) {
+          const cadetBtn = fcAppendButton(clubBtns, {
+            text: this.cadetSyncBusy ? "Синхр. профілів…" : "Синхр. профілі курсантів",
+            icon: "collab",
+            onClick: () => void this.syncCadetProfilesFromSheet(),
           });
-          const strip = wrap.createDiv({ cls: "fc-legend-strip" });
-          const open = Boolean(this.updatesLegendOpen);
-          const toggleBtn = strip.createEl("button", {
-            text: open ? "Сховати позначення ▴" : "Позначення та статуси ▾",
-            cls: "fc-text-btn fc-legend-toggle",
-            attr: {
-              type: "button",
-              "data-fc-legend-toggle": "",
-              "aria-expanded": String(open),
-              title: "Показати пояснення кольорів лічильників, статусів майна та воронки людей",
+          cadetBtn.disabled = Boolean(this.cadetSyncBusy || this.driveDownloading);
+        }
+        if (this.accountIsAdmax) {
+          fcAppendButton(clubBtns, { text: "Відкрити веб-Vault", icon: "external", onClick: () => this.openSite(DRIVE_VAULT_URL) });
+        }
+        if (this.folderSyncScope() === "staff") {
+          fcAppendButton(clubBtns, {
+            text: "Спільний вольт на сайті",
+            icon: "external",
+            onClick: () => {
+              const target = new URL("/markdown?view=shared", SITE);
+              const active = this.sharedWebNote;
+              if (active?.path === this.sharedNotePath() && active.token === this.vaultConfig.deviceToken) {
+                target.searchParams.set("note", active.fileId);
+                target.searchParams.set("edit", "1");
+              }
+              this.openSite(target.href);
             },
           });
-          toggleBtn.addEventListener("click", () => {
-            this.updatesLegendOpen = !this.updatesLegendOpen;
-            this.refreshDockViews(true);
-          });
+        }
+        fcAppendButton(clubBtns, { text: "Налаштування акаунта", icon: "sliders", onClick: () => this.openPluginSettingsTab() });
+        fcBalanceGrid(clubBtns);
 
-          const drawer = wrap.createDiv({
-            cls: "fc-legend-drawer",
-            attr: { "data-fc-legend-drawer": "" },
-          });
-          if (!open) drawer.hidden = true;
-          const counterGrid = drawer.createDiv({ cls: "fc-legend-counters" });
-          const counterRows = [
-            ["folder", "3", "fc-tree-update-badge fc-tree-update-badge-folder", "Папка", "сума оновлень"],
-            ["platform", "•", "fc-tree-update-badge", "Сайт", "автооновлення об’єкта"],
-            ["drive", "•", "fc-tree-update-badge", "Drive", "зміни колег"],
-          ];
-          for (const [tone, sample, badgeCls, titleText, descText] of counterRows) {
-            const row = counterGrid.createDiv({ cls: "fc-legend-row" });
-            row.createSpan({ text: sample, cls: badgeCls, attr: { "data-tone": tone } });
-            const copy = row.createDiv({ cls: "fc-legend-copy" });
-            copy.createEl("strong", { text: titleText });
-            copy.createEl("span", { text: descText });
-          }
-          const ttlBar = drawer.createDiv({ cls: "fc-counter-ttl-bar", attr: { "data-fc-counter-ttl": "" } });
-          ttlBar.createSpan({ text: "Позначки в дереві", cls: "fc-counter-ttl-label" });
-          const ttlSegmented = ttlBar.createDiv({ cls: "fc-counter-ttl-segmented", attr: { role: "group", "aria-label": "Час показу позначок у дереві" } });
-          const activeTtl = this.counterTimeoutSec();
-          for (const [sec, labelText, tipText] of [
-            [30, "30с", "Ховати цифри в дереві через 30 секунд (історія лишається тут)"],
-            [120, "2хв", "Ховати цифри в дереві через 2 хвилини"],
-            [0, "∞", "Тримати цифри в дереві, поки файл не відкрито"],
-            [-1, "Вимк", "Не показувати цифри в дереві (лише у списку «Оновлення»)"],
-          ]) {
-            const btn = ttlSegmented.createEl("button", {
-              text: labelText,
-              cls: "fc-counter-ttl-pill" + (activeTtl === sec ? " is-active" : ""),
-              attr: { type: "button", "data-fc-ttl-sec": String(sec), "aria-pressed": String(activeTtl === sec), title: tipText },
-            });
-            btn.addEventListener("click", () => this.setCounterTimeoutSec(sec));
-          }
-          const equipDetails = drawer.createEl("details", { cls: "fc-legend-subdetails", attr: { "data-fc-legend-group": "equipment" } });
-          equipDetails.createEl("summary", { text: `Статуси майна (${CANONICAL_EQUIPMENT_STATUSES.length})` });
-          const statusWrap = equipDetails.createDiv({ cls: "fc-legend-status-pills" });
-          for (const meta of CANONICAL_EQUIPMENT_STATUSES) {
-            appendStatusPill(statusWrap, meta, "fc-legend-pill", {
-              "data-fc-tree-status": meta.key,
-              title: meta.fullLabel,
-            });
-          }
-          const peopleDetails = drawer.createEl("details", { cls: "fc-legend-subdetails", attr: { "data-fc-legend-group": "people" } });
-          peopleDetails.createEl("summary", { text: `Люди та етапи воронки (${CANONICAL_PERSON_STATUSES.length})` });
-          const personWrap = peopleDetails.createDiv({ cls: "fc-legend-status-pills" });
-          for (const meta of CANONICAL_PERSON_STATUSES) {
-            appendStatusPill(personWrap, meta, "fc-tree-person-status fc-legend-pill", {
-              "data-fc-legend-person-status": meta.key,
-              title: meta.fullLabel,
-            });
-          }
-        };
-
-        const renderUpdatesSection = () => {
-          const allEntries = Array.from((this.unreviewedUpdates || new Map()).entries())
-            .filter(([uPath]) => typeof uPath === "string" && !isSyncArchivePath(uPath))
-            .sort(([, a], [, b]) => (Date.parse(b.editedAt || b.updatedAt) || 0) - (Date.parse(a.editedAt || a.updatedAt) || 0));
-          if (allEntries.length > 0) {
-            const platformEntries = allEntries.filter(([uPath, uInfo]) => badgeToneForKind(uInfo?.kind, uPath) === "platform");
-            const driveEntries = allEntries.filter(([uPath, uInfo]) => badgeToneForKind(uInfo?.kind, uPath) === "drive");
-            const filterKind = this.updatesFilterKind || "all";
-            const baseEntries = filterKind === "platform"
-              ? platformEntries
-              : filterKind === "drive"
-                ? driveEntries
-                : allEntries;
-
-            const updCard = bodySlot.createDiv({ cls: "fc-deck-card fc-unreviewed-card", attr: { "data-fc-unreviewed-card": "" } });
-            const updHead = updCard.createDiv({ cls: "fc-deck-header" });
-            const updTitleWrap = updHead.createDiv({ cls: "fc-upd-head-title" });
-            updTitleWrap.createEl("h4", {
-              text: "🔔 Оновлення",
-              cls: "fc-deck-title",
-            });
-            updTitleWrap.createSpan({
-              text: String(allEntries.length),
-              cls: "fc-upd-count-badge",
-            });
-            const clearBtn = updHead.createEl("button", {
-              text: "Прочитано все",
-              cls: "fc-text-btn",
-              attr: { type: "button", title: "Позначити всі автооновлення як переглянуті" },
-            });
-            clearBtn.addEventListener("click", () => this.clearAllUnreviewedUpdates());
-
-            const filterRow = updCard.createDiv({ cls: "fc-update-filter-chips" });
-            for (const [fKey, fLabel] of [
-              ["all", `Усі (${allEntries.length})`],
-              ["platform", `Сайт (${platformEntries.length})`],
-              ["drive", `Drive (${driveEntries.length})`],
-            ]) {
-              const chip = filterRow.createEl("button", {
-                text: fLabel,
-                cls: "fc-entity-pill" + (filterKind === fKey ? " is-active" : ""),
-                attr: { type: "button", "data-fc-update-filter": fKey, "aria-pressed": String(filterKind === fKey) },
-              });
-              chip.addEventListener("click", () => {
-                this.updatesFilterKind = fKey;
-                this.updatesShowAll = false;
-                this.refreshDockViews(true);
-              });
-            }
-
-            let searchInput = null;
-            if (allEntries.length > 8) {
-              const searchWrap = updCard.createDiv({ cls: "fc-update-search-wrap" });
-              searchInput = searchWrap.createEl("input", {
-                cls: "fc-update-search-input",
-                attr: {
-                  type: "search",
-                  placeholder: "Пошук в оновленнях (назва, автор, папка)…",
-                  "aria-label": "Фільтр оновлень",
-                  "data-fc-updates-search": "",
-                },
-              });
-              searchInput.value = this.updatesSearchQuery || "";
-            }
-
-            const listContainer = updCard.createDiv({ cls: "fc-update-list-wrap" });
-            const clearListEl = (el) => {
-              if (typeof el.empty === "function") el.empty();
-              else if (typeof el.replaceChildren === "function") el.replaceChildren();
-              else if (Array.isArray(el.children)) el.children.length = 0;
-            };
-
-            const drawUpdatesRows = () => {
-              clearListEl(listContainer);
-              const q = String(this.updatesSearchQuery || "").trim().toLowerCase();
-              const visibleEntries = q
-                ? baseEntries.filter(([uPath, uInfo]) =>
-                    uPath.toLowerCase().includes(q) ||
-                    String(uInfo?.editorName || "").toLowerCase().includes(q) ||
-                    String(uInfo?.summary || "").toLowerCase().includes(q))
-                : baseEntries;
-
-              const pageLimit = this.updatesShowAll ? visibleEntries.length : 10;
-              const shownEntries = visibleEntries.slice(0, pageLimit);
-              if (!shownEntries.length) {
-                listContainer.createDiv({
-                  cls: "fc-update-empty",
-                  text: q ? "За вашим запитом оновлень не знайдено." : "Непрочитаних оновлень у цьому джерелі немає.",
-                });
-                return;
-              }
-              const updList = listContainer.createEl("ul", { cls: "fc-workspace-activity-list fc-update-list" });
-              for (const [uPath, uInfo] of shownEntries) {
-                const tone = badgeToneForKind(uInfo?.kind, uPath);
-                const itemStatus = this.equipmentStatusForPath(uPath) || this.personStatusForPath(uPath);
-                const li = updList.createEl("li", { cls: "fc-deck-row fc-update-row", attr: { "data-tone": tone } });
-                const topLine = li.createDiv({ cls: "fc-update-row-top" });
-                const titleGroup = topLine.createDiv({ cls: "fc-deck-row-title-wrap" });
-                const stem = uPath.split("/").pop()?.replace(/\.(?:md|canvas|base)$/i, "") || uPath;
-                const typeIcon = /\.canvas$/i.test(uPath) ? "🎨 " : /\.base$/i.test(uPath) ? "🗃️ " : "";
-                const folderTrail = uPath.includes("/") ? uPath.slice(0, uPath.lastIndexOf("/")).split("/").slice(-2).join(" / ") : "";
-                const titleBtn = titleGroup.createEl("button", {
-                  text: `${typeIcon}${stem}`,
-                  cls: "fc-update-title-btn",
-                  attr: { type: "button", title: uPath },
-                });
-                titleBtn.addEventListener("click", () => void this.openUpdateNotePath(uPath));
-                if (itemStatus) {
-                  appendStatusPill(titleGroup, itemStatus, itemStatus.category === "person" ? "fc-tree-person-status" : "", {
-                    "data-fc-tree-status": itemStatus.key,
-                    title: itemStatus.tooltip || itemStatus.fullLabel,
-                  });
-                }
-                const whenLabel = formatEditorTimestamp(uInfo.editedAt || uInfo.updatedAt);
-                const source = uInfo.kind === "page" || tone === "platform" ? "Сайт" : "Drive";
-                const detailButton = topLine.createEl("button", {
-                  text: uInfo.count > 1 ? String(uInfo.count) : "···",
-                  cls: "fc-update-detail-button",
-                  attr: { type: "button", "data-tone": tone, "aria-label": `Деталі оновлення: ${stem}`, "aria-expanded": "false" },
-                });
-                this.bindUpdateDetails(li, detailButton, { info: uInfo, path: uPath, title: stem, source });
-
-                const subLine = li.createDiv({ cls: "fc-update-row-sub" });
-                subLine.createSpan({
-                  cls: "fc-update-row-meta",
-                  text: [source, uInfo.editorName || folderTrail, whenLabel].filter(Boolean).join(" · "),
-                });
-                const rowBtns = subLine.createDiv({ cls: "fc-update-row-actions" });
-                const dismissUpdBtn = rowBtns.createEl("button", {
-                  text: "✓",
-                  cls: "fc-row-action-btn fc-row-action-icon",
-                  attr: { type: "button", "aria-label": `Позначити прочитаним: ${stem}`, title: "Позначити прочитаним" },
-                });
-                dismissUpdBtn.addEventListener("click", () => this.markNoteReviewed(uPath));
-              }
-
-              if (visibleEntries.length > 10) {
-                const moreBtn = listContainer.createEl("button", {
-                  text: this.updatesShowAll ? "Згорнути список" : `Показати ще (${visibleEntries.length - 10})`,
-                  cls: "fc-text-btn fc-show-more-btn",
-                  attr: { type: "button" },
-                });
-                moreBtn.addEventListener("click", () => {
-                  this.updatesShowAll = !this.updatesShowAll;
-                  drawUpdatesRows();
-                });
-              }
-            };
-
-            drawUpdatesRows();
-            if (searchInput) {
-              searchInput.addEventListener("input", () => {
-                this.updatesSearchQuery = searchInput.value;
-                drawUpdatesRows();
-              });
-            }
-
-            renderInlineLegendBar(updCard);
-          } else {
-            const emptyLegendWrap = bodySlot.createDiv({ cls: "fc-deck-card fc-legend-compact-card" });
-            renderInlineLegendBar(emptyLegendWrap);
-          }
-        };
-
-        renderUpdatesSection();
-      } else if (activeTab === "entities") {
-        this.renderMentionSearch(bodySlot.createDiv({ cls: "fc-deck-card" }), { file, state: opts.mentionState });
-      } else if (activeTab === "graph") {
-        this.renderGraphInsights(bodySlot, { expanded: false });
-      } else if (activeTab === "history") {
-        this.renderHistoryPanel(bodySlot.createDiv({ cls: "fc-deck-card" }), file, activeLink, { showTitle: false });
-      } else if (activeTab === "pages") {
-        // Pages /m/ Browser & 1-Click Sync Tab
-        const pagesCard = bodySlot.createDiv({ cls: "fc-deck-card" });
+        // Knowledge Base Pages (/m/) Disclosure
         const entries = Array.from(this.links.entries()).filter(([p]) => !isSyncArchivePath(p));
-        const pHead = pagesCard.createDiv({ cls: "fc-deck-header" });
-        pHead.createEl("h4", {
-          text: `📚 Сторінки бази знань /m/ (${entries.length})`,
-          cls: "fc-deck-title",
+        const pagesDetails = bodySlot.createEl("details", {
+          cls: "fc-deck-card fc-dock-disclosure",
+          attr: rawTab === "pages" ? { open: "" } : {},
         });
-
-        const syncBtns = pagesCard.createDiv({ cls: "fc-deck-grid" });
-        const pullBtn = syncBtns.createEl("button", {
-          text: "📥 Завантажити всі сторінки у Vault",
-          cls: "mod-cta fc-deck-btn",
-          attr: { type: "button" },
-        });
-        pullBtn.addEventListener("click", () => void this.pullPagesFromSite());
-
-        const idxBtn = syncBtns.createEl("button", {
-          text: "🔄 Оновити індекс",
-          cls: "fc-deck-btn",
-          attr: { type: "button" },
-        });
-        idxBtn.addEventListener("click", () => void this.syncIndexFromSite(true));
+        pagesDetails.createEl("summary", { cls: "fc-dock-details-summary", text: `Сторінки бази знань /m/ (${entries.length})` });
+        const pagesBody = pagesDetails.createDiv({ cls: "fc-sync-form" });
+        const syncBtns = pagesBody.createDiv({ cls: "fc-deck-grid" });
+        fcAppendButton(syncBtns, { text: "Завантажити сторінки у Vault", icon: "pull", cls: "mod-cta fc-deck-btn", onClick: () => void this.pullPagesFromSite() });
+        fcAppendButton(syncBtns, { text: "Оновити індекс", icon: "sync", cls: "fc-deck-btn", onClick: () => void this.syncIndexFromSite(true) });
+        fcBalanceGrid(syncBtns);
 
         const filterState = opts.pagesFilterState || { query: "" };
-        const searchInput = pagesCard.createEl("input", {
-          attr: { type: "search", placeholder: "Фільтр за назвою файлу або slug…" },
-        });
+        const searchInput = pagesBody.createEl("input", { attr: { type: "search", placeholder: "Фільтр за назвою або slug…" } });
         searchInput.value = filterState.query || "";
-        const listEl = pagesCard.createDiv({ cls: "fc-deck-list" });
+        const listEl = pagesBody.createDiv({ cls: "fc-deck-list" });
         const renderRows = (q) => {
-          listEl.empty();
+          listEl.empty?.();
           const cleanQ = String(q || "").trim().toLowerCase();
           for (const [notePath, linkInfo] of entries) {
             if (cleanQ && !`${notePath} ${linkInfo.slug}`.toLowerCase().includes(cleanQ)) continue;
@@ -14904,863 +15693,79 @@ module.exports = class FlightClubMarkdown extends Plugin {
             const unrev = this.unreviewedUpdates?.get(notePath);
             if (unrev && unrev.count > 0) {
               const pTone = badgeToneForKind(unrev.kind, notePath);
-              titleWrap.createSpan({
-                text: `+${unrev.count}`,
-                cls: "fc-tree-update-badge",
-                attr: { "data-fc-update-badge": `+${unrev.count}`, "data-tone": pTone, title: unrev.summary || "" },
-              });
+              titleWrap.createSpan({ text: `+${unrev.count}`, cls: "fc-tree-update-badge", attr: { "data-fc-update-badge": `+${unrev.count}`, "data-tone": pTone } });
             }
-            const stateBadge = linkInfo.conflict
-              ? "⚠️ Перевірити"
-              : linkInfo.dirtyLocal
-                ? "✏️ Локальні зміни"
-                : "✅ Актуально";
-            const metaParts = [mappedDriveId ? "Drive Docs" : `/m/${linkInfo.slug}`, folderPart || null, stateBadge].filter(Boolean);
-            info.createSpan({
-              text: metaParts.join(" · "),
-              cls: "fc-deck-row-meta",
-            });
+            const stateBadge = linkInfo.conflict ? "Потрібна перевірка" : linkInfo.dirtyLocal ? "Локальні зміни" : "Актуально";
+            info.createSpan({ text: [mappedDriveId ? "Drive Docs" : `/m/${linkInfo.slug}`, folderPart || null, stateBadge].filter(Boolean).join(" · "), cls: "fc-deck-row-meta" });
             const actions = row.createDiv({ cls: "fc-deck-grid" });
-            const openNoteBtn = actions.createEl("button", {
+            fcAppendButton(actions, {
               text: "Відкрити",
-              cls: "fc-deck-btn",
-              attr: { type: "button" },
-            });
-            openNoteBtn.addEventListener("click", async () => {
-              if (mappedDriveId) {
-                const liveFound = this.findLiveDriveFile(mappedDriveId, catalogEntry?.obsidian_path || notePath);
-                if (liveFound) {
-                  await this.openDriveFileInObsidian(mappedDriveId, liveFound.path);
-                  return;
+              icon: "file",
+              onClick: async () => {
+                if (mappedDriveId) {
+                  const liveFound = this.findLiveDriveFile(mappedDriveId, catalogEntry?.obsidian_path || notePath);
+                  if (liveFound) { await this.openDriveFileInObsidian(mappedDriveId, liveFound.path); return; }
                 }
-              }
-              const abs = !isSyncArchivePath(notePath) ? this.app.vault.getAbstractFileByPath(notePath) : null;
-              if (abs instanceof TFile) {
-                await this.app.workspace.getLeaf(false).openFile(abs, { active: true });
-              } else {
-                new Notice("Файл нотатки не знайдено: " + notePath);
-              }
+                const abs = !isSyncArchivePath(notePath) ? this.app.vault.getAbstractFileByPath(notePath) : null;
+                if (abs instanceof TFile) await this.app.workspace.getLeaf(false).openFile(abs, { active: true });
+                else new Notice("Файл нотатки не знайдено: " + notePath);
+              },
             });
             if (mappedDriveId && driveView) {
-              const docsBtn = actions.createEl("button", {
-                text: "Docs ↗",
-                cls: "fc-deck-btn",
-                attr: { type: "button", title: `Відкрити у Google Drive / Docs: ${driveView}` },
-              });
-              docsBtn.addEventListener("click", () => this.openSite(driveView));
-              const vaultBtn = actions.createEl("button", {
-                text: "Vault ↗",
-                cls: "fc-deck-btn",
-                attr: { type: "button", title: `Відкрити у FlightClub Drive Vault: ${siteEditUrl}` },
-              });
-              vaultBtn.addEventListener("click", () => this.openSite(siteEditUrl));
+              fcAppendButton(actions, { text: "Docs", icon: "external", attr: { title: driveView }, onClick: () => this.openSite(driveView) });
+              fcAppendButton(actions, { text: "Vault", icon: "external", attr: { title: siteEditUrl }, onClick: () => this.openSite(siteEditUrl) });
             } else {
-              const openWebBtn = actions.createEl("button", {
-                text: "Сайт ↗",
-                cls: "fc-deck-btn",
-                attr: { type: "button", title: siteEditUrl },
-              });
-              openWebBtn.addEventListener("click", () => this.openSite(siteEditUrl));
+              fcAppendButton(actions, { text: "Сайт", icon: "external", attr: { title: siteEditUrl }, onClick: () => this.openSite(siteEditUrl) });
             }
             const copyUrl = (mappedDriveId && driveView) ? driveView : siteEditUrl;
-            const copyPageBtn = actions.createEl("button", {
-              text: "📋 Лінк",
-              cls: "fc-deck-btn",
-              attr: { type: "button", title: copyUrl },
+            fcAppendButton(actions, {
+              text: "Лінк",
+              icon: "copy",
+              attr: { title: copyUrl },
+              onClick: () => void this.copyTextToClipboard(copyUrl, mappedDriveId ? "Посилання скопійовано" : "Посилання скопійовано"),
             });
-            copyPageBtn.addEventListener("click", () => void this.copyTextToClipboard(copyUrl, mappedDriveId ? "Посилання Google Drive скопійовано" : "Посилання скопійовано"));
+            fcBalanceGrid(actions);
           }
         };
-        searchInput.addEventListener("input", () => {
-          filterState.query = searchInput.value;
-          renderRows(searchInput.value);
-        });
+        searchInput.addEventListener("input", () => { filterState.query = searchInput.value; renderRows(searchInput.value); });
         renderRows(filterState.query);
-      } else if (activeTab === "drive") {
-        // 1) Shared Folder / Published Vault (first <select> for plugin-ui.test.mjs)
-        const syncCard = bodySlot.createDiv({ cls: "fc-deck-card fc-sync-card fc-shared-secondary" });
-        syncCard.createEl("h4", { cls: "fc-deck-title", text: "FlightClub Sync" });
-        const scope = this.folderSyncScope();
-        const root = scope === "private" ? this.treeSyncState?.localRoot || "FlightClub Sync" : "FlightClub Shared";
-        syncCard.createEl("p", { cls: "fc-sync-note", text: (scope === "staff" ? "Опублікований вольт · " : "Папка ADMAX · ") + root });
-        if (scope === "staff") {
-          syncCard.createEl("button", { text: "Опублікований вольт на сайті", attr: { type: "button" } })
-            .addEventListener("click", () => {
-              const target = new URL("/markdown?view=shared", SITE);
-              const active = this.sharedWebNote;
-              if (active?.path === this.sharedNotePath() && active.token === this.vaultConfig.deviceToken) {
-                target.searchParams.set("note", active.fileId);
-                target.searchParams.set("edit", "1");
-              }
-              this.openSite(target.href);
-            });
-        }
-        if (this.accountCanSyncPrivate) {
-          const field = syncCard.createEl("label", { cls: "fc-deck-field" });
-          field.createSpan({ text: "Сховище синхронізації" });
-          const select = field.createEl("select");
-          select.createEl("option", { text: "Опублікований вольт", attr: { value: "staff" } });
-          select.createEl("option", { text: "Приватне ADMAX", attr: { value: "private" } });
-          select.value = scope;
-          select.disabled = this.treeSyncBusy || this.driveDownloading;
-          select.addEventListener("change", async () => {
-            if (this.treeSyncBusy || this.driveDownloading) { select.value = scope; return; }
-            const previous = this.vaultConfig.folderSyncScope;
-            this.vaultConfig.folderSyncScope = select.value;
-            this.folderSyncRevision = undefined;
-            this.folderSyncOpenPending = false;
-            this.treeSyncMessage = "";
-            try { await this.persist(); }
-            catch {
-              this.vaultConfig.folderSyncScope = previous;
-              new Notice("Не вдалося зберегти налаштування.");
-            }
-            if (!this.alive) return;
-            this.refreshDockViews();
-            void this.runAutomaticFolderSync();
-          });
-        }
-        const syncStatus = syncCard.createEl("p", { cls: "fc-sync-status", attr: { role: "status" } });
-        syncStatus.setText(this.vaultConfig.deviceToken
-          ? this.treeSyncMessage || "Перевірте, чи доступне сховище для вашого профілю."
-          : "Підключіть акаунт FlightClub, щоб перевірити сховище.");
-        const reportSync = message => {
-          this.treeSyncMessage = message;
-          syncStatus.setText(message);
-        };
-        const automaticLabel = syncCard.createEl("label",{cls:"fc-sync-note"});
-        const automatic = automaticLabel.createEl("input",{attr:{type:"checkbox"}});
-        const usingDrivePrimary = this.vaultConfig.pairedReadDrive !== false && this.vaultConfig.driveAutoSync !== false;
-        automatic.checked = scope === "staff" && usingDrivePrimary
-          ? Boolean(this.vaultConfig.folderAutoSync && this.vaultConfig.explicitStaffFolderSync)
-          : Boolean(this.vaultConfig.folderAutoSync);
-        automatic.disabled = !this.accountVerified || !this.vaultConfig.pairedCanSync;
-        automaticLabel.createSpan({text:" Автоматично синхронізувати опубліковані файли (FlightClub Shared)"});
-        automatic.addEventListener("change",async()=>{
-          const prevAuto = this.vaultConfig.folderAutoSync;
-          const prevExplicit = this.vaultConfig.explicitStaffFolderSync;
-          this.vaultConfig.folderAutoSync = automatic.checked;
-          if (scope === "staff") this.vaultConfig.explicitStaffFolderSync = automatic.checked;
-          try {await this.persist();if(automatic.checked){this.folderSyncDirty=true;void this.runAutomaticFolderSync();}}
-          catch {
-            this.vaultConfig.folderAutoSync = prevAuto;
-            this.vaultConfig.explicitStaffFolderSync = prevExplicit;
-            automatic.checked = prevAuto;
-            new Notice("Не вдалося зберегти налаштування.");
-          }
-        });
-        const syncActions = syncCard.createDiv({ cls: "fc-deck-grid" });
-        const checkButton = syncActions.createEl("button", { cls: "fc-deck-btn", text: "Перевірити сховище", attr: { type: "button" } });
-        const syncButton = syncActions.createEl("button", { cls: "mod-cta fc-deck-btn", text: "Переглянути зміни", attr: { type: "button" } });
-        checkButton.disabled = syncButton.disabled = !this.accountVerified || !this.vaultConfig.pairedCanSync;
-        checkButton.addEventListener("click", async () => {
-          checkButton.disabled = true;
-          reportSync("Перевіряємо доступ…");
-          try {
-            const status = await this.treeSync.status();
-            if (this.alive) reportSync("Сховище доступне · " + status.files + " файлів.");
-          } catch (error) {
-            if (this.alive) reportSync(error.message);
-          } finally { checkButton.disabled = !this.accountVerified || !this.vaultConfig.pairedCanSync; }
-        });
-        syncButton.addEventListener("click", () => void this.previewTreeSync(reportSync));
 
-        // 2) Primary Google Drive Two-Way Sync Card (Drive is Authoritative)
-        const driveCard = bodySlot.createDiv({ cls: "fc-deck-card fc-sync-card" });
-        const driveHead = driveCard.createDiv({ cls: "fc-deck-header" });
-        driveHead.createEl("h4", { cls: "fc-deck-title", text: "FlightClub Vault · Google Drive" });
-        driveHead.createSpan({
-          cls: "fc-deck-badge " + (this.vaultConfig.driveAutoSync !== false ? "fc-deck-badge-ok" : ""),
-          text: this.vaultConfig.driveAutoSync !== false ? "Автосінк Drive" : "Ручний режим",
+        // Knowledge Graph Disclosure
+        const graphDetails = bodySlot.createEl("details", {
+          cls: "fc-deck-card fc-dock-disclosure",
+          attr: rawTab === "graph" ? { open: "" } : {},
         });
-        if (hasToken) driveCard.createEl("p", { cls: "fc-sync-note", text: [
-          this.accountVerified ? this.vaultConfig.pairedRole : "Роль перевіряється",
-          this.accountVerified && this.vaultConfig.pairedCanEdit ? "Двосторонній сінк (текст, Canvas, .base, фото)" : "Читання дозволених файлів",
-          this.drivePreview ? `${this.drivePreview.available}${this.drivePreview.partial ? "+" : ""} файлів на Drive` : "",
-        ].filter(Boolean).join(" · ") });
-        const downloadStatus = driveCard.createEl("p", { cls: "fc-sync-status", text: this.driveDownloadStatus || "Готово до синхронізації з Google Drive.", attr: { role: "status", "data-fc-download-status": "" } });
-        downloadStatus.hidden=!this.driveDownloading && Boolean(this.syncTotals?.drive);
-        this.renderSyncMetrics(driveCard);
-        const progress = driveCard.createEl("progress", {cls:"fc-import-progress", attr: {"data-fc-import-progress":"", "aria-label":this.importProgress?.stage||"Синхронізація Drive"}});
-        progress.hidden = !this.driveDownloading;
-        if (this.importProgress?.total > 0) { progress.max=this.importProgress.total; progress.value=this.importProgress.current; }
-        const driveBtnRow = driveCard.createDiv({ cls: "fc-deck-grid" });
-        const hasLocalDriveFiles = this.driveFilesCount() > 0 || this.drivePreview?.matches > 0;
-        const download = driveBtnRow.createEl("button", {
-          cls: "mod-cta fc-deck-btn",
-          text: this.driveDownloading ? "Синхронізація триває…"
-            : hasLocalDriveFiles ? "🔄 Синхронізувати з Drive зараз" : "Імпортувати з Drive",
-          attr: { type: "button" },
-        });
-        download.disabled = !hasToken || Boolean(this.driveDownloading || this.reviewSyncBusy || this.updatingPlugin) || this.drivePreview?.available === 0;
-        download.addEventListener("click", () => void this.startVaultDownload(message => downloadStatus.setText(message), {
-          pushLocal: hasLocalDriveFiles,
-        }));
-        const accessButton = driveBtnRow.createEl("button", { text:"Звірити доступ",cls:"fc-deck-btn",attr:{type:"button"} });
-        accessButton.disabled = !hasToken || Boolean(this.driveDownloading || this.previewingDrive);
-        accessButton.addEventListener("click",()=>void this.prepareVaultImport({allowAutomatic:false}));
-        const openVault = driveBtnRow.createEl("button", { cls: "fc-deck-btn", text: "Відкрити веб-Vault", attr: { type: "button" } });
-        openVault.hidden = !this.accountIsAdmax;
-        openVault.addEventListener("click", () => this.openSite(DRIVE_VAULT_URL));
-        const canManageCadetSync = Boolean(this.accountIsAdmax || /^admin$/i.test(String(this.vaultConfig?.pairedRole || "")));
-        const syncCadetsBtn = driveBtnRow.createEl("button", {
-          cls: "fc-deck-btn",
-          text: this.cadetSyncBusy ? "Синхр. профілів…" : "👤 Синхр. профілі курсантів",
-          attr: { type: "button", title: "Автоматично створити відсутні профілі курсантів з Google Таблиці у 01_03 Профілі курсантів" },
-        });
-        syncCadetsBtn.hidden = !hasToken || !canManageCadetSync;
-        syncCadetsBtn.disabled = !hasToken || !canManageCadetSync || Boolean(this.cadetSyncBusy || this.driveDownloading);
-        syncCadetsBtn.addEventListener("click", () => void this.syncCadetProfilesFromSheet(downloadStatus));
-        const teamSharedCount = (this.teamPluginsCatalog?.plugins || []).length;
-        const admaxPluginsBtn = driveBtnRow.createEl("button", {
-          cls: "fc-deck-btn",
-          text: teamSharedCount ? `🧩 Плагіни команди (${teamSharedCount})` : "🧩 Плагіни команди",
-          attr: {
-            type: "button",
-            "data-fc-admax-team-plugins": "",
-            title: "Вибрати встановлені плагіни для синхронізації в команді та автоматичного підвантаження з Community Plugins",
-          },
-        });
-        admaxPluginsBtn.hidden = !hasToken || !this.accountIsAdmax;
-        admaxPluginsBtn.disabled = !hasToken || !this.accountIsAdmax;
-        admaxPluginsBtn.addEventListener("click", () => void this.openAdmaxTeamPluginsModal());
-        if (this.driveDownloading) {
-          const cancel = driveBtnRow.createEl("button", {text:"Призупинити", cls:"fc-deck-btn",attr:{type:"button"}});
-          cancel.addEventListener("click",()=>{this.cancelDriveDownload=true;cancel.disabled=true;downloadStatus.setText("Завершуємо поточний крок…");});
-        }
-        if (this.pagesDownloadStatus) driveCard.createEl("p", { cls: "fc-sync-note", text: this.pagesDownloadStatus });
-        if (this.driveLastSummary?.backups?.length) {
-          const backupDetails = driveCard.createEl("details", { cls: "fc-secondary-actions" });
-          backupDetails.createEl("summary", { text: `📦 Архів конфліктів / видалень (${this.driveLastSummary.backups.length})` });
-          const bList = backupDetails.createDiv({ cls: "fc-backup-list" });
-          for (const item of this.driveLastSummary.backups.slice(0, 12)) {
-            const bRow = bList.createDiv({ cls: "fc-backup-row" });
-            const cleanName = (item.path || item.backupPath || "").split("/").pop()?.replace(/\.(?:md|canvas)$/i, "") || item.backupPath;
-            const reasonText = item.reason === "drive_wins_conflict" ? "чернетка до оновлення з Drive"
-              : item.reason === "deleted_on_drive" ? "видалено на Drive"
-              : item.reason === "remote_move" || item.reason === "remote_move_displaced" ? "переміщено на Drive"
-              : "архівна копія";
-            bRow.createSpan({ text: `${cleanName} (${reasonText})`, attr: { title: `${item.path} → ${item.backupPath}` } });
-            const origFile = item.path ? this.app.vault.getAbstractFileByPath(item.path) : null;
-            if (origFile instanceof TFile) {
-              const oOpen = bRow.createEl("button", { text: "📂 Оригінал", cls: "fc-deck-btn", attr: { type: "button", title: item.path } });
-              oOpen.addEventListener("click", () => this.openAndRevealFile(item.path));
-            }
-            const bOpen = bRow.createEl("button", { text: "📦 Архів", cls: "fc-deck-btn", attr: { type: "button", title: item.backupPath } });
-            bOpen.addEventListener("click", () => {
-              const bf = this.app.vault.getAbstractFileByPath(item.backupPath);
-              if (bf instanceof TFile) this.openAndRevealFile(item.backupPath);
-              else new Notice("Архівний файл не знайдено: " + item.backupPath);
-            });
-          }
-        }
-        const driveStatus = driveCard.createEl("p", { cls: "fc-sync-status", attr: { role: "status" } });
-        const describeBinding = () => this.drivePreview?.source?.name
-          ? "Папка Drive · " + this.drivePreview.source.name
-          : "Звірте папку Google Drive із сайтом.";
-        driveStatus.setText(describeBinding());
-        const checkpoints = this.getSyncCheckpoints();
-        if (checkpoints.length > 0) {
-          const cpStrip = driveCard.createDiv({ cls: "fc-checkpoint-strip", attr: { "data-fc-sync-checkpoints": "" } });
-          cpStrip.createSpan({ cls: "fc-checkpoint-label", text: "Синхрон-чекпоїнти" });
-          const cpList = cpStrip.createDiv({ cls: "fc-checkpoint-list" });
-          for (const cp of checkpoints) {
-            const cpRow = cpList.createDiv({ cls: "fc-checkpoint-row" + (cp.active ? " is-active" : "") });
-            cpRow.createSpan({ cls: "fc-checkpoint-name", text: cp.name });
-            const metaBits = [
-              cp.filesCount ? `${cp.filesCount} ф.` : null,
-              cp.at ? new Date(cp.at).toLocaleDateString("uk-UA", { day: "2-digit", month: "2-digit" }) : null,
-            ].filter(Boolean);
-            if (metaBits.length) cpRow.createSpan({ cls: "fc-checkpoint-meta", text: metaBits.join(" · ") });
-            cpRow.createSpan({
-              cls: "fc-checkpoint-pill" + (cp.active ? " is-active" : ""),
-              text: cp.active ? "🟢 Активний" : "Чекпоїнт",
-            });
-          }
-        }
-        const driveForm = driveCard.createEl("form", { cls: "fc-sync-form" });
-        driveForm.hidden = !this.accountIsAdmax;
-        const driveField = driveForm.createEl("label", { cls: "fc-deck-field" });
-        driveField.createSpan({ text: "Нова папка Drive (посилання або ID)" });
-        const driveInput = driveField.createEl("input", {
-          attr: { type: "text", autocomplete: "off", placeholder: "https://drive.google.com/drive/folders/…" },
-        });
-        const driveActions = driveForm.createDiv({ cls: "fc-deck-grid" });
-        driveActions.createEl("button", { cls: "mod-cta fc-deck-btn", text: "Вибрати папку на сайті", attr: { type: "submit" } });
-        const verifyButton = driveActions.createEl("button", { cls: "fc-deck-btn", text: "Звірити папку", attr: { type: "button" } });
-        verifyButton.disabled = !this.vaultConfig.deviceToken;
-        verifyButton.addEventListener("click", async () => {
-          verifyButton.disabled = true;
-          driveStatus.setText("Звіряємо прив’язку…");
-          try {
-            const binding = await this.verifyDriveBinding();
-            if (this.alive) {
-              driveStatus.setText(binding ? "Папка Drive · " + (binding.rootName || binding.rootId) : "Папку Drive ще не вибрано.");
-              if (binding) void this.prepareVaultImport({ allowAutomatic: false });
-            }
-          } catch (error) {
-            if (this.alive) driveStatus.setText(error.message);
-          } finally { verifyButton.disabled = !this.vaultConfig.deviceToken; }
-        });
-        driveInput.addEventListener("input", () => {
-          if (driveInput.hasAttribute("aria-invalid")) {
-            driveInput.removeAttribute("aria-invalid");
-            driveStatus.setText(describeBinding());
-          }
-        });
-        driveForm.addEventListener("submit", event => {
-          event.preventDefault();
-          if (!this.accountIsAdmax) return;
-          const input = driveInput.value.trim();
-          const rootId = parseDriveInput(input);
-          if (input && !rootId) {
-            driveInput.setAttribute("aria-invalid", "true");
-            driveStatus.setText("Вкажіть посилання на папку Google Drive або її ID.");
-            driveInput.focus();
-            return;
-          }
-          const id = crypto.randomUUID();
-          this.pendingVault = { id, expires: Date.now() + TTL };
-          const target = new URL(SITE + "/m/obsidian-sync");
-          target.searchParams.set("obsidian", id);
-          target.searchParams.set("intent", "vault");
-          if (rootId) target.searchParams.set("drive", rootId);
-          this.openSite(target.href);
-          driveStatus.setText("Підтвердьте папку у браузері, а потім поверніться в Obsidian.");
-        });
-        const isMobileEnv = Boolean(Platform?.isMobile || Platform?.isMobileApp);
-        if (!isMobileEnv) {
-          const importInput = driveCard.createEl("input", { attr: { type: "file", webkitdirectory: "", multiple: "", hidden: "" } });
-          const importButton = driveActions.createEl("button", { cls: "fc-deck-btn", text: "Імпортувати з локальної папки", attr: { type: "button" } });
-          importButton.addEventListener("click", () => importInput.click());
-          importInput.addEventListener("change", async () => {
-            const selection = Array.from(importInput.files || []);
-            importInput.value = "";
-            if (!selection.length) return;
-            importButton.disabled = true;
-            driveStatus.setText("Звіряємо вибрану папку…");
-            try {
-              const scope = this.folderSyncScope();
-              const plan = await this.treeSync.previewImport(selection);
-              if (!this.alive) return;
-              driveStatus.setText("Копію перевірено. Перегляньте результат перед імпортом.");
-              this.dialogForm({
-                title: "Імпорт копії Google Drive",
-                description: "Обрана папка · " + plan.originalRoot + "\n"
-                  + "Нових файлів · " + (plan.entries.length - plan.unchanged) + "\n"
-                  + "Збігаються · " + plan.unchanged + "\nПропущено · " + plan.skipped
-                  + "\n\nКопія з’явиться в " + this.treeSync.localRoot() + ". Після імпорту можна переглянути план синхронізації із сервером.",
-                button: "Імпортувати",
-                submit: async () => {
-                  if (this.treeSyncBusy) throw new Error("Зачекайте завершення поточної синхронізації.");
-                  if (this.folderSyncScope() !== scope) throw new Error("Сховище змінилося. Перегляньте імпорт ще раз.");
-                  this.treeSyncBusy = true;
-                  try {
-                    const result = await this.treeSync.applyImport(plan);
-                    if (this.alive) driveStatus.setText("Імпортовано · " + result.added + ". Збігаються · " + result.unchanged + ".");
-                  } finally { this.treeSyncBusy = false; }
-                },
-              });
-            } catch (error) {
-              if (this.alive) driveStatus.setText(error.message);
-            } finally { importButton.disabled = false; }
-          });
-        }
-
-        const teamPlugins = this.teamPluginsCatalog?.plugins || [];
-        if (hasToken && (teamPlugins.length > 0 || this.accountIsAdmax)) {
-          const teamCard = bodySlot.createDiv({ cls: "fc-deck-card fc-sync-card fc-team-plugins-card", attr: { "data-fc-team-plugins-card": "" } });
-          const teamHead = teamCard.createDiv({ cls: "fc-deck-header" });
-          teamHead.createEl("h4", { cls: "fc-deck-title", text: `🧩 Плагіни команди (${teamPlugins.length})` });
-          if (this.teamPluginsCatalog?.updatedBy) {
-            teamHead.createSpan({ cls: "fc-deck-badge", text: `ADMAX · ${this.teamPluginsCatalog.updatedBy}` });
-          }
-          const installedIds = new Set(
-            Object.keys(this.app?.plugins?.manifests || {}).map((id) => id.toLowerCase()),
-          );
-          const enabledIds = new Set(
-            Array.from(this.app?.plugins?.enabledPlugins || []).map((id) => String(id).toLowerCase()),
-          );
-          let installedCnt = 0;
-          let missingCnt = 0;
-          let disabledCnt = 0;
-          for (const tp of teamPlugins) {
-            const key = String(tp.id || "").toLowerCase();
-            if (!installedIds.has(key)) missingCnt++;
-            else if (enabledIds.size && !enabledIds.has(key)) disabledCnt++;
-            else installedCnt++;
-          }
-          const summaryText = teamPlugins.length === 0
-            ? "Спільний список плагінів ще не налаштований. Натисніть «Налаштувати список», щоб обрати плагіни для команди."
-            : missingCnt === 0 && disabledCnt === 0
-              ? `Усі ${teamPlugins.length} плагінів команди встановлені й готові до роботи.`
-              : `Установлено: ${installedCnt} із ${teamPlugins.length}` +
-                (missingCnt ? ` · Потрібно встановити: ${missingCnt}` : "") +
-                (disabledCnt ? ` · Потрібно увімкнути: ${disabledCnt}` : "");
-          teamCard.createEl("p", { cls: "fc-team-plugins-summary", text: summaryText });
-          const teamBtns = teamCard.createDiv({ cls: "fc-deck-grid" });
-          if (teamPlugins.length > 0) {
-            const installTeamBtn = teamBtns.createEl("button", {
-              cls: (missingCnt > 0 || disabledCnt > 0 ? "mod-cta " : "") + "fc-deck-btn",
-              text: missingCnt > 0
-                ? `⬇️ Встановити з Community Plugins (${missingCnt + disabledCnt})`
-                : disabledCnt > 0
-                  ? `▶ Увімкнути плагіни (${disabledCnt})`
-                  : "Переглянути плагіни команди",
-              attr: { type: "button", "data-fc-open-team-plugins-installer": "" },
-            });
-            installTeamBtn.addEventListener("click", () => void this.openTeamPluginsInstallerModal());
-          }
-          if (this.accountIsAdmax) {
-            const manageBtn = teamBtns.createEl("button", {
-              cls: (teamPlugins.length === 0 ? "mod-cta " : "") + "fc-deck-btn",
-              text: "⚙️ Налаштувати список",
-              attr: { type: "button", "data-fc-open-team-plugins-admin": "" },
-            });
-            manageBtn.addEventListener("click", () => void this.openAdmaxTeamPluginsModal());
-          }
-        }
-
-        // 3) Drive Sync Preferences (folderSelect remains last <select> for plugin-ui.test.mjs)
-        const notesCard = bodySlot.createDiv({ cls: "fc-deck-card fc-sync-card" });
-        notesCard.createEl("h4", { cls: "fc-deck-title", text: "Параметри Google Drive" });
-        for (const [key, title] of [
-          ["driveAutoSync","Автоматичний двосторонній сінк з Google Drive"],
-          ["refreshOnStartup","Синхронізувати при запуску Obsidian"],
-          ["importPages","Імпортувати доступні сторінки бази знань /m/"],
-          ["importPhotos","Завантажувати фото майна"],
-        ]) {
-          if (key === "importPhotos" && !this.vaultConfig.pairedCanEdit) continue;
-          const setting = notesCard.createEl("label",{cls:"fc-import-setting"});
-          const checkbox = setting.createEl("input",{attr:{type:"checkbox"}});
-          checkbox.checked = this.vaultConfig[key] === true;
-          setting.createSpan({text:title});
-          checkbox.addEventListener("change",async()=>{
-            const previous = this.vaultConfig[key];
-            const previousPaused = this.vaultConfig.refreshPausedByUser;
-            this.vaultConfig[key] = checkbox.checked;
-            if (key === "refreshOnStartup") this.vaultConfig.refreshPausedByUser = !checkbox.checked;
-            try {
-              await this.persist();
-              if (key === "driveAutoSync" && checkbox.checked) void this.runAutomaticDriveSync();
-            }
-            catch {
-              this.vaultConfig[key]=previous;
-              if (key === "refreshOnStartup") this.vaultConfig.refreshPausedByUser = previousPaused;
-              checkbox.checked=previous===true;
-              new Notice("Не вдалося зберегти параметр синхронізації.");
-            }
-          });
-        }
-        const folderField = notesCard.createEl("label", { cls: "fc-deck-field" });
-        folderField.createSpan({ text: "Локальна папка для Google Drive Vault" });
-        const folderSelect = folderField.createEl("select");
-        for (const fPath of this.vaultFolders()) {
-          const opt = folderSelect.createEl("option", {
-            text: fPath || "Корінь Obsidian Vault",
-            attr: { value: fPath },
-          });
-          if (fPath === (this.vaultConfig.localVaultRoot || "")) opt.selected = true;
-        }
-        folderSelect.addEventListener("change", async () => {
-          const previous = this.vaultConfig.localVaultRoot;
-          const previousPin = this.vaultConfig.userPinnedLocalRoot;
-          this.vaultConfig.localVaultRoot = folderSelect.value;
-          this.vaultConfig.userPinnedLocalRoot = true;
-          folderSelect.disabled = true;
-          try {
-            await this.persist();
-            this.updateStatusBar();
-          } catch {
-            this.vaultConfig.localVaultRoot = previous;
-            this.vaultConfig.userPinnedLocalRoot = previousPin;
-            folderSelect.value = previous;
-            new Notice("Не вдалося зберегти локальну папку. Спробуйте ще раз.");
-          } finally { folderSelect.disabled = false; }
-        });
+        graphDetails.createEl("summary", { cls: "fc-dock-details-summary", text: "Граф знань і зв’язки нотаток" });
+        this.renderGraphInsights(graphDetails.createDiv(), { expanded: false });
       }
     }
 
-    // 5. Anchored Bottom Google Drive Sync Dock + Structure Anti-Rollback + Hotkeys
-    const structSummaryFoot = hasToken ? (this.pendingStructureSummary?.() || { hasChanges: false, total: 0, lines: [], signature: "" }) : { hasChanges: false, total: 0, lines: [], signature: "" };
-    const dirtyCountFoot = this.dirtyDriveFiles?.size || 0;
-    const pendingDelFoot = this.pendingDriveDeletes?.length || 0;
-    const bulkTrashBlockedFoot = (this.syncActivity || []).filter(e => e?.reason === "bulk_trash_confirm");
+    // 4. Contextual Foot Slot ONLY when active file has pending local changes to push
     const footKey = host ? JSON.stringify([
-      Boolean(opts.isDock),
       hasToken,
-      this.accountVerified,
-      this.accountIsAdmax,
-      Boolean(this.vaultConfig?.pairedCanEdit),
-      Boolean(this.driveDownloading),
-      Boolean(this.previewingDrive),
-      Boolean(this.reviewSyncBusy),
+      Boolean(this.pendingPublish && this.pendingPublish.file === file),
+      this.pendingPublish?.baseline?.kind || "",
       Boolean(this.publishingDrive),
-      Boolean(this.updatingPlugin),
+      Boolean(this.driveDownloading),
+      Boolean(this.reviewSyncBusy),
       Boolean(this.updater?.blocked?.()),
-      this.driveDownloading ? null : this.driveDownloadStatus || "",
-      this.driveDownloading ? null : (this.recentSyncedEntries || []).map(r => r.path + ":" + r.status),
-      this.drivePreview ? `${this.drivePreview.available}:${this.drivePreview.matches}:${this.drivePreview.desync?.totalIssues ?? 0}:${Boolean(this.drivePreview.desync?.legacyPlatformFolder)}` : "",
-      this.drivePreview?.source?.name || "",
-      this.drivePreview?.source?.localRoot ?? this.vaultConfig?.localVaultRoot,
-      !this.driveDownloading && this.syncTotals?.drive ? JSON.stringify(this.syncTotals.drive) : "",
-      this.driveDownloading ? null : this.driveFilesCount?.() || 0,
-      this.driveLastSummary?.at || "",
-      this.pendingPublish?.file?.path || "",
       file?.path || "",
-      structSummaryFoot.signature || "",
-      dirtyCountFoot,
-      pendingDelFoot,
-      bulkTrashBlockedFoot.length,
     ]) : null;
     if (!host || host.footKey !== footKey) {
       if (host) {
         footSlot.empty?.();
         host.footKey = footKey;
       }
-
       if (hasToken && this.pendingPublish && this.pendingPublish.file === file) {
         const action = footSlot.createDiv({ cls: "fc-publish-bar" });
-        action.createSpan({ text: this.publishingDrive ? "Збереження…" : "Є локальні зміни", attr: { role: "status" } });
-        const publish = action.createEl("button", {
-          cls: "mod-cta fc-deck-btn", text: this.pendingPublish?.baseline?.kind === "platform" ? "Відправити на сайт" : "Опублікувати зміни", attr: { type: "button" },
+        action.createSpan({ text: this.publishingDrive ? "Збереження…" : "Є локальні зміни до публікації", attr: { role: "status" } });
+        const publish = fcAppendButton(action, {
+          text: this.pendingPublish?.baseline?.kind === "platform" ? "Відправити на сайт" : "Опублікувати зміни",
+          icon: "push",
+          cls: "mod-cta fc-deck-btn",
+          onClick: () => void this.publishActiveChanges(),
         });
         publish.disabled = Boolean(this.publishingDrive || this.driveDownloading || this.reviewSyncBusy || this.updater?.blocked());
-        publish.addEventListener("click", () => void this.publishActiveChanges());
-      }
-
-      if (hasToken && structSummaryFoot.hasChanges && (this.vaultConfig?.pairedCanEdit || this.accountIsAdmax)) {
-        const structBanner = footSlot.createEl("details", {
-          cls: "fc-structure-banner fc-dock-disclosure",
-          attr: { "data-fc-structure-banner": "", ...(host?.structureExpanded ? { open: "" } : {}) },
-        });
-        structBanner.createEl("summary", {
-          cls: "fc-dock-details-summary",
-          text: `Зміни папок · ${structSummaryFoot.total}`,
-        });
-        structBanner.addEventListener("toggle", () => {
-          if (host) host.structureExpanded = structBanner.open;
-        });
-        structBanner.createEl("p", {
-          cls: "fc-sync-note",
-          text: "Перейменування збережено локально. Перегляньте зміни перед відправкою на Google Drive.",
-        });
-        if (structSummaryFoot.lines.length) {
-          const sList = structBanner.createEl("ul", { cls: "fc-structure-banner-list" });
-          for (const line of structSummaryFoot.lines.slice(0, 4)) {
-            sList.createEl("li", { text: `${line.badge}: ${line.text}` });
-          }
-          if (structSummaryFoot.lines.length > 4) {
-            sList.createEl("li", { text: `…та ще ${structSummaryFoot.lines.length - 4} змін` });
-          }
-        }
-        const structActions = structBanner.createDiv({ cls: "fc-deck-grid" });
-        const pushStructBtn = structActions.createEl("button", {
-          cls: "mod-cta fc-deck-btn",
-          text: this.driveDownloading ? "⏳ Заливаємо…" : "⬆️ Залити структуру на Drive",
-          attr: { type: "button", "data-fc-structure-push": "" },
-        });
-        pushStructBtn.disabled = Boolean(this.driveDownloading || this.publishingDrive);
-        pushStructBtn.addEventListener("click", () => void this.pushStructureChangesToDrive());
-
-        const inspectStructBtn = structActions.createEl("button", {
-          cls: "fc-deck-btn",
-          text: "👁 Переглянути",
-          attr: { type: "button", "data-fc-structure-inspect": "" },
-        });
-        inspectStructBtn.addEventListener("click", () => this.openStructureSyncModal(this.pendingStructureSummary()));
-
-        const revertStructBtn = structActions.createEl("button", {
-          cls: "fc-deck-btn",
-          text: "↩️ Відкотити",
-          attr: { type: "button", "data-fc-structure-revert": "" },
-        });
-        revertStructBtn.disabled = Boolean(this.driveDownloading || this.publishingDrive);
-        revertStructBtn.addEventListener("click", () => {
-          this.dialogForm({
-            title: "Відкотити локальні зміни структури папок?",
-            description: "Локально перейменовані або переміщені папки й файли повернуться до розташування як на головному Google Drive.",
-            button: "Відкотити до версії Drive",
-            submit: async () => { await this.revertStructureChangesToDrive(); },
-          });
-        });
-      }
-
-      if (hasToken) {
-        const desync = this.drivePreview?.desync;
-        const desyncCount = desync?.totalIssues || 0;
-        const trackedTotal = this.driveFilesCount?.() || 0;
-        const needsInitialImport = Boolean(this.drivePreview?.available > 0 && !this.drivePreview.matches);
-        const hasDesync = Boolean(desync?.hasDesync || needsInitialImport);
-        const showSyncProgress = Boolean(this.driveDownloading && (!this._quietSync || (this.importProgress?.total || 0) > 0));
-        const pendingPushCount = dirtyCountFoot + (this.syncTotals?.drive?.dirty || 0) + (structSummaryFoot.total || 0) + pendingDelFoot;
-        const idleTime = this.driveLastSummary?.at
-          ? new Date(this.driveLastSummary.at).toLocaleTimeString("uk-UA", { hour: "2-digit", minute: "2-digit" })
-          : "";
-        const syncBanner = footSlot.createDiv({
-          cls: "fc-deck-card fc-sync-banner fc-sync-dock" + (hasDesync ? " is-desync" : this.drivePreview ? " is-ok" : ""),
-          attr: { "data-fc-sync-dock": "bottom" },
-        });
-        const syncHead = syncBanner.createDiv({ cls: "fc-deck-header" });
-        syncHead.createEl("h4", {
-          cls: "fc-deck-title",
-          text: showSyncProgress
-            ? "⏳ Синхронізація Drive…"
-            : needsInitialImport
-              ? `📥 Копія Vault (${this.drivePreview.available} файлів)`
-              : hasDesync
-                ? `⚠️ Виявлено розсинхрон (${desyncCount})`
-                : this.drivePreview
-                  ? `🟢 Drive · ${trackedTotal || this.drivePreview.available} файлів${idleTime ? ` · ${idleTime}` : ""}`
-                  : "🗂️ Синхронізація Google Drive",
-        });
-        if (!showSyncProgress && this.drivePreview?.source?.name) {
-          const source = this.drivePreview.source;
-          syncBanner.createEl("p", {
-            cls: "fc-sync-note fc-sync-checkpoint-line",
-            text: `Google Drive «${source.name}» → ${source.localRoot ? `«${source.localRoot}» у цьому Vault` : "корінь цього Vault"}`,
-          });
-        }
-        const conflictIssueCount = (this.syncTotals?.drive?.conflicts || 0) + (this.syncTotals?.drive?.archivedConflicts || 0) + (this.syncTotals?.drive?.archivedRemoteDelete || 0);
-        if (!showSyncProgress && (conflictIssueCount > 0 || pendingPushCount > 0)) {
-          const attentionBar = syncBanner.createDiv({ cls: "fc-sync-attention-bar", attr: { "data-fc-sync-attention": "" } });
-          if (conflictIssueCount > 0) {
-            const confBtn = attentionBar.createEl("button", {
-              cls: "fc-sync-attention-btn is-conflict",
-              text: `⚠️ Конфлікти / архів · ${conflictIssueCount}`,
-              attr: { type: "button", title: "Відкрити зміни та конфлікти (До / Після)" },
-            });
-            confBtn.addEventListener("click", () => this.openSyncResults("drive", "conflict"));
-          }
-          if (pendingPushCount > 0) {
-            const dirtyBtn = attentionBar.createEl("button", {
-              cls: "fc-sync-attention-btn is-dirty",
-              text: `✏️ Локальні зміни · ${pendingPushCount}`,
-              attr: { type: "button", title: "Переглянути локальні правки перед синхронізацією" },
-            });
-            dirtyBtn.addEventListener("click", () => this.openSyncResults("drive", dirtyCountFoot || this.syncTotals?.drive?.dirty ? "dirty" : "changed"));
-          }
-        }
-        if (!showSyncProgress && (bulkTrashBlockedFoot.length > 0 || pendingDelFoot > 10) && (this.vaultConfig?.pairedCanEdit || this.accountIsAdmax)) {
-          const delCount = Math.max(pendingDelFoot, bulkTrashBlockedFoot.length);
-          const bulkBanner = syncBanner.createDiv({ cls: "fc-bulk-trash-banner", attr: { "data-fc-bulk-trash-banner": "" } });
-          bulkBanner.createEl("div", {
-            cls: "fc-bulk-trash-title",
-            text: `⚠️ Видалено локально ${delCount} файлів (понад 10)`,
-          });
-          bulkBanner.createEl("p", {
-            cls: "fc-bulk-trash-desc",
-            text: "Щоб випадково не очистити Google Drive, масове видалення зупинено. Підтвердіть перенесення в кошик Drive або відновіть файли з Drive.",
-          });
-          const sampleNames = [
-            ...bulkTrashBlockedFoot.map(e => String(e.path || "").split("/").at(-1) || e.path),
-            ...(this.pendingDriveDeletes || []).map(d => String(d.path || "").split("/").at(-1) || d.path),
-          ].filter(Boolean);
-          const uniqueSampleNames = [...new Set(sampleNames)];
-          if (uniqueSampleNames.length) {
-            const shown = uniqueSampleNames.slice(0, 4).join(", ");
-            const rest = delCount - Math.min(4, uniqueSampleNames.length);
-            bulkBanner.createEl("div", {
-              cls: "fc-bulk-trash-files",
-              text: rest > 0 ? `${shown} + ще ${rest}` : shown,
-            });
-          }
-          const bulkActions = bulkBanner.createDiv({ cls: "fc-bulk-trash-actions" });
-          const confirmTrashBtn = bulkActions.createEl("button", {
-            cls: "fc-deck-btn mod-warning",
-            text: `🗑️ Підтвердити видалення (${delCount}) в Drive`,
-            attr: { type: "button", "data-fc-confirm-bulk-trash": "" },
-          });
-          confirmTrashBtn.disabled = Boolean(this.driveDownloading || this.reviewSyncBusy || this.updatingPlugin || this.updater?.blocked());
-          confirmTrashBtn.addEventListener("click", () => void this.startVaultDownload(undefined, { pushLocal: true, structureMode: "push", confirmBulkTrash: true, showResults: true }));
-          const restoreTrashBtn = bulkActions.createEl("button", {
-            cls: "fc-deck-btn",
-            text: "⬇️ Відновити файли з Drive",
-            attr: { type: "button", "data-fc-restore-bulk-trash": "" },
-          });
-          restoreTrashBtn.disabled = Boolean(this.driveDownloading || this.reviewSyncBusy || this.updatingPlugin || this.updater?.blocked());
-          restoreTrashBtn.addEventListener("click", () => void this.startVaultDownload(undefined, { pushLocal: false, showResults: true }));
-        }
-
-        if (showSyncProgress) {
-          syncBanner.createEl("p", {
-            cls: "fc-sync-status",
-            text: this.driveDownloadStatus || "Перевіряємо зміни Google Drive…",
-            attr: { role: "status", "data-fc-download-status": "" },
-          });
-          const activeSyncBtn = syncBanner.createEl("button", {
-            cls: "fc-active-sync-link",
-            attr: {
-              type: "button",
-              "data-fc-active-sync-link": "",
-              ...(this.activeSyncPath ? { "data-path": this.activeSyncPath, title: `Відкрити в Obsidian: ${this.activeSyncPath}` } : {}),
-            },
-          });
-          activeSyncBtn.hidden = !this.activeSyncPath;
-          activeSyncBtn.createSpan({ text: "⟳ Зараз: ", cls: "fc-active-sync-prefix" });
-          activeSyncBtn.createSpan({
-            text: this.activeSyncPath ? (this.activeSyncPath.split("/").at(-1) || this.activeSyncPath) : "",
-            cls: "fc-active-sync-name",
-            attr: { "data-fc-active-sync-name": "" },
-          });
-          activeSyncBtn.createSpan({ text: " ↗", cls: "fc-active-sync-arrow" });
-          activeSyncBtn.addEventListener("click", () => {
-            const p = activeSyncBtn.getAttribute("data-path") || this.activeSyncPath;
-            if (p) this.openAndRevealFile(p);
-          });
-
-          const topProgress = syncBanner.createEl("progress", { cls: "fc-import-progress", attr: { "data-fc-import-progress": "" } });
-          if (this.importProgress?.total > 0) {
-            topProgress.max = this.importProgress.total;
-            topProgress.value = this.importProgress.current;
-          }
-        }
-        const initialPullRow = needsInitialImport
-          ? syncBanner.createDiv({ cls: "fc-sync-direction-grid" })
-          : null;
-        const syncDetails = syncBanner.createEl("details", {
-          cls: "fc-dock-disclosure fc-sync-details",
-          attr: { ...(host?.syncExpanded ? { open: "" } : {}) },
-        });
-        syncDetails.createEl("summary", { cls: "fc-dock-details-summary", text: "Керування синхронізацією" });
-        syncDetails.addEventListener("toggle", () => {
-          if (host) host.syncExpanded = syncDetails.open;
-        });
-        if (desync && desyncCount > 0) {
-          const details = [];
-          const driveChanges = (desync.driveMissing || 0) + (desync.driveOutdated || 0) + (desync.driveRenamed || 0) + (desync.driveUntracked || 0);
-          const platChanges = (desync.platformOutdatedFiles ?? Math.max(desync.platformLegacyNames || 0, desync.platformLegacySchema || 0, desync.platformUnboundOrOld || 0)) + (desync.platformMissing || 0);
-          const pageChanges = (desync.pagesOutdated || 0) + (desync.pagesMissing || 0);
-          if (driveChanges > 0) details.push(`Файли Drive: ${driveChanges} оновлень`);
-          if (platChanges > 0) details.push(`Об’єкти платформи: ${platChanges} оновлень`);
-          if (pageChanges > 0) details.push(`Сторінки /m/: ${pageChanges} оновлень`);
-          if (desync.legacyPlatformFolder) details.push("Знайдено стару папку FlightClub (Майно/Події)");
-          if (details.length) {
-            const list = syncDetails.createEl("ul", { cls: "fc-sync-desync-list" });
-            for (const item of details) list.createEl("li", { text: item });
-          }
-        } else if (!showSyncProgress && this.driveDownloadStatus && (hasDesync || !this.driveLastSummary?.at)) {
-          syncBanner.createEl("p", {
-            cls: "fc-sync-status",
-            text: this.driveDownloadStatus,
-            attr: { role: "status", "data-fc-download-status": "" },
-          });
-        }
-
-        const primaryRow = syncDetails.createDiv({ cls: "fc-sync-direction-grid" });
-        const pullBtn = (initialPullRow ?? primaryRow).createEl("button", {
-          cls: (hasDesync ? "mod-cta " : "") + "fc-deck-btn fc-btn-pull-drive",
-          text: this.driveDownloading
-            ? "⏳ Оновлення…"
-            : needsInitialImport
-              ? "Імпортувати з Drive"
-              : hasDesync
-                ? "Оновити з Drive зараз"
-                : "⬇️ Оновити з Drive",
-          attr: {
-            type: "button",
-            title: "Завантажити нові й оновлені файли з Google Drive у ваш локальний Vault (не перезаписує Drive)",
-            "data-fc-sync-pull": "",
-          },
-        });
-        pullBtn.disabled = !hasToken || Boolean(this.driveDownloading || this.reviewSyncBusy || this.updatingPlugin || this.updater?.blocked());
-        pullBtn.addEventListener("click", () => void this.startVaultDownload(undefined, { pushLocal: false, showResults: true }));
-
-        if (this.vaultConfig?.pairedCanEdit || this.accountIsAdmax) {
-          const pushBtn = primaryRow.createEl("button", {
-            cls: (pendingPushCount > 0 ? "mod-cta " : "") + "fc-deck-btn fc-btn-push-drive",
-            text: this.driveDownloading
-              ? "⏳ Відправка…"
-              : pendingPushCount > 0
-                ? `⬆️ Залити в Drive (${pendingPushCount})`
-                : "⬆️ Залити в Drive",
-            attr: {
-              type: "button",
-              title: "Відправити локальні правки та перейменування папок на головний Google Drive",
-              "data-fc-sync-push": "",
-            },
-          });
-          pushBtn.disabled = !hasToken || Boolean(this.driveDownloading || this.reviewSyncBusy || this.updatingPlugin || this.updater?.blocked());
-          pushBtn.addEventListener("click", () => void this.startVaultDownload(undefined, { pushLocal: true, structureMode: "push", showResults: true }));
-        }
-
-        const utilRow = syncDetails.createDiv({ cls: "fc-deck-grid fc-sync-util-row" });
-        if (this.driveDownloading) {
-          const stopBtn = syncHead.createEl("button", {
-            cls: "fc-deck-btn fc-sync-pause",
-            text: "⏸ Пауза",
-            attr: { type: "button", title: "Призупинити поточну синхронізацію" },
-          });
-          stopBtn.addEventListener("click", () => {
-            this.cancelDriveDownload = true;
-            this.driveResyncQueued = false;
-            this.driveDownloadStatus = "Синхронізацію призупинено.";
-            this.refreshDockViews();
-          });
-        }
-        const checkBtn = utilRow.createEl("button", {
-          cls: "fc-deck-btn",
-          text: this.previewingDrive ? "Перевірка…" : "🔎 Звірити",
-          attr: { type: "button", title: "Швидко звірити стан локальних файлів із Google Drive" },
-        });
-        checkBtn.disabled = !hasToken || Boolean(this.driveDownloading || this.previewingDrive);
-        checkBtn.addEventListener("click", () => void this.prepareVaultImport({ allowAutomatic: false }));
-
-        if (this.vaultConfig?.pairedCanEdit || this.accountIsAdmax) {
-          const folderBtn = utilRow.createEl("button", {
-            cls: "fc-deck-btn",
-            text: "📁 Перейменувати папку",
-            attr: { type: "button", title: "Перейменувати папку або замінити порожню папку на головному Google Drive", "data-fc-rename-folder": "" },
-          });
-          folderBtn.disabled = Boolean(this.driveDownloading || this.publishingDrive);
-          folderBtn.addEventListener("click", () => this.openFolderRenameModal());
-        }
-
-        if (!this.driveDownloading && Array.isArray(this.recentSyncedEntries) && this.recentSyncedEntries.length > 0) {
-          const feed = syncDetails.createDiv({ cls: "fc-sync-recent-feed" });
-          feed.createSpan({ text: "Останні зміни:", cls: "fc-sync-recent-label" });
-          const feedList = feed.createDiv({ cls: "fc-sync-recent-chips" });
-          for (const rec of this.recentSyncedEntries.slice(0, 4)) {
-            const icon = rec.status === "uploaded" || rec.status === "created_remote" ? "⬆️"
-              : rec.status === "archived_conflict" ? "📦" : "⬇️";
-            const chip = feedList.createEl("button", {
-              cls: "fc-sync-recent-chip",
-              text: `${icon} ${rec.path.split("/").at(-1) || rec.path}`,
-              attr: { type: "button", title: `Відкрити в Obsidian: ${rec.path}` },
-            });
-            chip.addEventListener("click", () => this.openAndRevealFile(rec.path));
-          }
-        }
-
-        if (!this.driveDownloading && this.syncTotals?.drive) this.renderSyncMetrics(syncDetails);
-      }
-
-      const hkDetails = footSlot.createEl("details", {
-        cls: "fc-deck-card fc-hotkey-card",
-        attr: opts.isDock ? {} : { open: "open" },
-      });
-      const hkSum = hkDetails.createEl("summary", {
-        cls: "fc-deck-header",
-        attr: { style: "cursor:pointer" },
-      });
-      hkSum.createSpan({ text: "⌨️ Швидкі клавіші FlightClub (Hotkeys)", cls: "fc-deck-title" });
-      hkSum.createSpan({ text: "Призначено автоматично", cls: "fc-deck-badge fc-deck-badge-ok" });
-
-      const hkTable = hkDetails.createDiv({ cls: "fc-hotkey-table" });
-      const shortcuts = [
-        ["💎 Відкрити панель FlightClub Hub", "Alt + Shift + F"],
-        ["🔄 Синхронізувати Google Drive зараз", "Alt + Shift + G"],
-        ["✏️ Редагувати поточну нотатку на сайті", "Alt + Shift + O"],
-        ["🚀 Підключити акаунт FlightClub", "Alt + Shift + P"],
-        ["💾 Зберегти нотатку на сайт /m/", "Alt + Shift + S"],
-        ["⚡ Увімкнути / пауза Live Edit", "Alt + Shift + L"],
-        ["🔗 Вставити згадку сайту", "Alt + Shift + M"],
-        ["📥 Завантажити сторінки /m/ у Vault", "Alt + Shift + D"],
-      ];
-      for (const [label, combo] of shortcuts) {
-        const r = hkTable.createDiv({ cls: "fc-hotkey-row" });
-        r.createSpan({ text: label });
-        r.createEl("kbd", { text: combo, cls: "fc-hotkey-kbd" });
       }
     }
     if (host && savedScroll > 0 && typeof container.scrollTop === "number") {
@@ -16065,7 +16070,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
     const platform = this.platformNote(file);
     if (platform) {
       const url = platform.id ? refUrl(platform.kind + ":" + platform.id) : null;
-      return url ? { kind: "platform", url, label: "✏️ Редагувати / відкрити на сайті", sub: LABEL[platform.kind] } : null;
+      return url ? { kind: "platform", url, label: "Редагувати / відкрити на сайті", sub: LABEL[platform.kind] } : null;
     }
     const driveBase = this.driveBaselineFor(file);
     const driveId = this.resolveDriveIdForFile(file);
@@ -16079,7 +16084,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
         vaultShareUrl: `${SITE}/markdown?view=vault&file=${encodedId}&edit=1&share=1`,
         driveUrl: driveOpenUrlForPath(driveId, file.path),
         isMdTarget,
-        label: "✏️ Редагувати на сайті",
+        label: "Редагувати на сайті",
         sub: `Google Drive · ${driveBase?.sourcePath || file.path}`,
         pageUrl: link ? `${pageUrl(link.slug)}?edit=1` : null,
         shareUrl: link ? pageUrl(link.slug) : null,
@@ -16090,7 +16095,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
       return {
         kind: "m",
         url: `${pageUrl(link.slug)}?edit=1`,
-        label: "✏️ Редагувати на сайті",
+        label: "Редагувати на сайті",
         sub: `/m/${link.slug}`,
         shareUrl: pageUrl(link.slug),
         slug: link.slug,
@@ -16103,7 +16108,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
       const url = matchedId && UUID.test(matchedId)
         ? `${SITE}/markdown?view=shared&note=${encodeURIComponent(matchedId)}&edit=1`
         : `${SITE}/markdown?view=shared`;
-      return { kind: "shared", url, label: "✏️ Редагувати на сайті", sub: "Спільний Vault" };
+      return { kind: "shared", url, label: "Редагувати на сайті", sub: "Спільний Vault" };
     }
     return null;
   }
@@ -16451,7 +16456,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
     this.dialog = modal;
 
     modal.onOpen = async () => {
-      modal.titleEl.setText("🧩 Плагіни команди (ADMAX)");
+      modal.titleEl.setText("Плагіни команди (ADMAX)");
       const root = modal.contentEl.createDiv({ cls: "fc-team-plugins-modal", attr: { "data-fc-admax-team-plugins-modal": "" } });
       root.createEl("p", {
         cls: "fc-deck-sub",
@@ -16530,7 +16535,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
       const listEl = root.createDiv({ cls: "fc-team-plugins-list" });
       const footerActions = root.createDiv({ cls: "fc-conflict-actions" });
       const saveBtn = footerActions.createEl("button", {
-        text: `💾 Зберегти спільний список (${draft.size})`,
+        text: `Зберегти спільний список (${draft.size})`,
         cls: "mod-cta fc-deck-btn",
         attr: { type: "button", "data-fc-save-team-plugins": "" },
       });
@@ -16709,13 +16714,13 @@ module.exports = class FlightClubMarkdown extends Plugin {
     this.dialog = modal;
 
     modal.onOpen = async () => {
-      modal.titleEl.setText("🧩 Плагіни команди · Community Plugins");
+      modal.titleEl.setText("Плагіни команди · Community Plugins");
       const root = modal.contentEl.createDiv({ cls: "fc-team-plugins-modal", attr: { "data-fc-team-plugins-installer": "" } });
       const statusEl = root.createEl("p", { cls: "fc-sync-status", text: "Завантажуємо спільний список плагінів…", attr: { role: "status" } });
       const topActions = root.createDiv({ cls: "fc-team-plugins-toolbar" });
       const listEl = root.createDiv({ cls: "fc-team-plugins-list" });
       const footerActions = root.createDiv({ cls: "fc-conflict-actions" });
-      const refreshBtn = footerActions.createEl("button", { text: "🔄 Оновити статус", cls: "fc-deck-btn", attr: { type: "button" } });
+      const refreshBtn = footerActions.createEl("button", { text: "Оновити статус", cls: "fc-deck-btn", attr: { type: "button" } });
       const closeBtn = footerActions.createEl("button", { text: "Закрити", cls: "fc-deck-btn", attr: { type: "button" } });
       closeBtn.addEventListener("click", () => modal.close());
 
@@ -16774,7 +16779,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
         const installable = state.rows.filter((r) => r.status === "missing" && r.repo);
         if (canDirectInstall && installable.length > 0) {
           const batchBtn = topActions.createEl("button", {
-            text: `⬇️ Автоматично встановити всі з Community Plugins (${installable.length})`,
+            text: `Автоматично встановити всі (${installable.length})`,
             cls: "mod-cta fc-deck-btn",
             attr: { type: "button", "data-fc-install-all-team-plugins": "" },
           });
@@ -16807,10 +16812,10 @@ module.exports = class FlightClubMarkdown extends Plugin {
           void titleSpan;
 
           const badges = head.createDiv({ cls: "fc-team-plugin-badges" });
-          const badgeText = item.status === "installed_enabled" ? "✅ Активний"
-            : item.status === "installed_disabled" ? "⏸ Вимкнено"
-            : item.status === "desktop_only_mobile" ? "💻 Лише для ПК"
-            : "⬇️ Не встановлено";
+          const badgeText = item.status === "installed_enabled" ? "Активний"
+            : item.status === "installed_disabled" ? "Вимкнено"
+            : item.status === "desktop_only_mobile" ? "Лише для ПК"
+            : "Не встановлено";
           const badgeCls = item.status === "installed_enabled" ? "fc-deck-badge fc-deck-badge-ok"
             : item.status === "missing" || item.status === "installed_disabled" ? "fc-deck-badge fc-deck-badge-warn"
             : "fc-deck-badge";
@@ -16826,7 +16831,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
           const btns = row.createDiv({ cls: "fc-team-plugin-actions" });
           if (item.status === "missing") {
             const openBtn = btns.createEl("button", {
-              text: "🔗 Відкрити в Community Plugins",
+              text: "Відкрити в Community Plugins",
               cls: (!canDirectInstall ? "mod-cta " : "") + "fc-deck-btn",
               attr: { type: "button", "data-fc-show-community-plugin": item.id },
             });
@@ -16836,7 +16841,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
 
             if (canDirectInstall && item.repo) {
               const autoBtn = btns.createEl("button", {
-                text: "⬇️ Встановити в 1 клік",
+                text: "Встановити в 1 клік",
                 cls: "mod-cta fc-deck-btn",
                 attr: { type: "button", "data-fc-install-one-plugin": item.id },
               });
@@ -16864,7 +16869,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
             }
           } else if (item.status === "installed_disabled") {
             const enableBtn = btns.createEl("button", {
-              text: "▶ Увімкнути плагін",
+              text: "Увімкнути плагін",
               cls: "mod-cta fc-deck-btn",
               attr: { type: "button", "data-fc-enable-team-plugin": item.id },
             });
@@ -16890,7 +16895,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
 
           if ((item.status === "installed_enabled" || item.status === "installed_disabled") && item.syncConfig && item.dataJson !== undefined) {
             const cfgBtn = btns.createEl("button", {
-              text: "⚙️ Застосувати спільні налаштування",
+              text: "Застосувати спільні налаштування",
               cls: "fc-deck-btn",
               attr: { type: "button", "data-fc-apply-team-plugin-config": item.id },
             });
@@ -17160,7 +17165,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
       attr: { "data-fc-event-publish-card": "" },
     });
     const head = card.createDiv({ cls: "fc-deck-header" });
-    head.createEl("h4", { cls: "fc-deck-title", text: "📅 Публікація події" });
+    head.createEl("h4", { cls: "fc-deck-title", text: "Публікація події" });
     const badgeCls = !parsed.valid
       ? "fc-deck-badge fc-deck-badge-warn"
       : parsed.alreadyPublished && !parsed.hasChangesSincePublish
@@ -17199,36 +17204,44 @@ module.exports = class FlightClubMarkdown extends Plugin {
     }
 
     const btns = card.createDiv({ cls: "fc-deck-grid fc-event-publish-actions" });
-    const pubBtn = btns.createEl("button", {
-      text: parsed.alreadyPublished ? "🔄 Оновити / Опублікувати подію" : "🚀 Опублікувати подію",
+    const pubBtn = fcAppendButton(btns, {
+      text: parsed.alreadyPublished ? "Оновити / Опублікувати подію" : "Опублікувати подію",
+      icon: parsed.alreadyPublished ? "sync" : "publish",
       cls: (parsed.publishFlag && parsed.hasChangesSincePublish ? "mod-cta " : "") + "fc-deck-btn",
-      attr: { type: "button", "data-fc-open-event-publish": "" },
+      attr: { "data-fc-open-event-publish": "" },
+      onClick: () => void this.openEventPublishModal(file),
     });
     pubBtn.disabled = !hasToken;
-    pubBtn.addEventListener("click", () => void this.openEventPublishModal(file));
 
     if (!Object.prototype.hasOwnProperty.call(this.app?.metadataCache?.getFileCache?.(file)?.frontmatter || {}, "event-copywrite")) {
-      const propBtn = btns.createEl("button", {
-        text: "➕ Додати поля публікації",
+      fcAppendButton(btns, {
+        text: "Додати поля публікації",
+        icon: "plus",
         cls: "fc-deck-btn",
-        attr: { type: "button" },
+        onClick: () => void this.insertEventPublishProperties(file),
       });
-      propBtn.addEventListener("click", () => void this.insertEventPublishProperties(file));
     }
+    fcBalanceGrid(btns);
 
     const links = [];
     if (parsed.existing.gcalLink || parsed.calendarTemplateUrl) {
-      links.push([parsed.existing.gcalEventId ? "📅 Google Calendar" : "📅 В Google Календар (шаблон)", parsed.existing.gcalLink || parsed.calendarTemplateUrl]);
+      links.push([parsed.existing.gcalEventId ? "Google Calendar" : "До Google Календаря", parsed.existing.gcalLink || parsed.calendarTemplateUrl, "calendar"]);
     }
-    if (parsed.existing.discordEventLink) links.push(["💬 Discord Подія", parsed.existing.discordEventLink]);
-    if (parsed.existing.siteEventId) links.push(["🌐 Розклад сайту", `${SITE}/schedule?e=${encodeURIComponent(parsed.existing.siteEventId)}`]);
+    if (parsed.existing.discordEventLink) links.push(["Discord Подія", parsed.existing.discordEventLink, "external"]);
+    if (parsed.existing.siteEventId) links.push(["Розклад сайту", `${SITE}/schedule?e=${encodeURIComponent(parsed.existing.siteEventId)}`, "external"]);
 
     if (links.length) {
       const linksWrap = card.createDiv({ cls: "fc-event-publish-links" });
-      for (const [lbl, href] of links) {
-        const b = linksWrap.createEl("button", { text: lbl, cls: "fc-entity-pill", attr: { type: "button", title: href } });
-        b.addEventListener("click", () => this.openSite(href));
+      for (const [lbl, href, iconKind] of links) {
+        fcAppendButton(linksWrap, {
+          text: lbl,
+          icon: iconKind,
+          cls: "fc-entity-pill",
+          attr: { title: href },
+          onClick: () => this.openSite(href),
+        });
       }
+      fcBalanceGrid(linksWrap);
     }
   }
 
@@ -17245,7 +17258,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
     this.dialog = modal;
 
     modal.onOpen = async () => {
-      modal.titleEl.setText("📅 Публікація події FlightClub");
+      modal.titleEl.setText("Публікація події FlightClub");
       const root = modal.contentEl.createDiv({
         cls: "fc-event-publish-modal",
         attr: { "data-fc-event-publish-modal": "" },
@@ -17308,7 +17321,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
       const gcalLbl = gcalWrap.createEl("label", { cls: "fc-event-publish-channel-row" });
       const gcalCb = gcalLbl.createEl("input", { attr: { type: "checkbox" } });
       gcalCb.checked = true;
-      gcalLbl.createSpan({ text: "📅 Google Календар" });
+      gcalLbl.createSpan({ text: "Google Календар" });
       gcalWrap.createEl("p", {
         cls: "fc-event-publish-channel-hint",
         text: serverStatus?.googleCalendarConfigured
@@ -17320,13 +17333,13 @@ module.exports = class FlightClubMarkdown extends Plugin {
       const dcLbl = dcWrap.createEl("label", { cls: "fc-event-publish-channel-row" });
       const dcCb = dcLbl.createEl("input", { attr: { type: "checkbox" } });
       dcCb.checked = true;
-      dcLbl.createSpan({ text: parsed.existing.discordEventId ? "💬 Discord Подія (оновити існуючу)" : "💬 Discord Server Event (створити подію на сервері)" });
+      dcLbl.createSpan({ text: parsed.existing.discordEventId ? "Discord Подія (оновити існуючу)" : "Discord Server Event (створити подію на сервері)" });
 
       const waWrap = channelsBox.createDiv({ cls: "fc-event-publish-channel-opt" });
       const waLbl = waWrap.createEl("label", { cls: "fc-event-publish-channel-row" });
       const waCb = waLbl.createEl("input", { attr: { type: "checkbox" } });
       waCb.checked = false;
-      waLbl.createSpan({ text: "📢 WhatsApp спільнота / чат (анонс від Маскота)" });
+      waLbl.createSpan({ text: "WhatsApp спільнота / чат (анонс від Маскота)" });
       waWrap.createEl("p", {
         cls: "fc-event-publish-channel-hint",
         text: "Evolution API v2.3.7 не підтримує створення нативної картки WhatsApp Community Event, тому бот надішле форматований анонс із посиланнями на Google Календар і Discord у вибрану групу.",
@@ -17453,16 +17466,16 @@ module.exports = class FlightClubMarkdown extends Plugin {
     this.pruneDeletedLinks();
     const modal = new Modal(this.app);
     this.dialog = modal;
-    let activeTab = "live", entering = true;
+    let activeTab = "sync", entering = true;
     const mentionState = { kind: "all", query: "" };
     const pagesFilterState = { query: "" };
     const hubHost = {};
     const render = () => {
       this.renderHubInterface(modal.contentEl, { targetFile, activeTab, mentionState, pagesFilterState, host: hubHost, entering,
-        onTabChange: (tab) => { activeTab = tab; render(); } });
+        onTabChange: (tab) => { activeTab = normalizeHubTab(tab); render(); } });
       entering = false;
     };
-    const refresh = (liveOnly) => { if (!liveOnly || activeTab === "live") render(); };
+    const refresh = (liveOnly) => { if (!liveOnly || ["collab", "live"].includes(activeTab)) render(); };
     modal.onOpen = () => { this.mobileHubRefresh = refresh; modal.titleEl.setText("FlightClub"); render(); };
     modal.onClose = () => {
       hubHost.cleanup?.();
