@@ -27,152 +27,161 @@
   100% { background-color: transparent; }
 }
 
-/* ── Top Live Collaborator HUD Banner inside MarkdownView ─────────────── */
+/* ── Compact Floating Corner Live Edit Pill & Popover HUD (Zero CLS) ──── */
 .fc-live-banner {
-  display: flex;
+  position: absolute;
+  top: 8px;
+  right: 14px;
+  z-index: 25;
+  display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 7px 14px;
-  background: linear-gradient(90deg, rgba(16, 185, 129, 0.14), rgba(15, 23, 42, 0.85), rgba(239, 68, 68, 0.12));
-  border-bottom: 1px solid rgba(16, 185, 129, 0.35);
-  font-size: 12px;
-  line-height: 1.35;
-  z-index: 20;
+  gap: 6px 8px;
+  width: max-content;
+  max-width: min(540px, calc(100% - 24px));
+  padding: 5px 8px 5px 10px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  background: rgba(10, 13, 18, 0.94);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.44);
+  font-size: 11.5px;
+  line-height: 1.3;
   backdrop-filter: blur(10px);
 }
 
 .fc-live-banner-paused {
-  background: linear-gradient(90deg, rgba(245, 158, 11, 0.12), rgba(15, 23, 42, 0.75));
-  border-bottom-color: rgba(245, 158, 11, 0.35);
+  border-color: rgba(245, 158, 11, 0.36);
 }
 
 .fc-live-banner-unpaired {
-  background: linear-gradient(90deg, rgba(239, 68, 68, 0.16), rgba(15, 23, 42, 0.85));
-  border-bottom-color: rgba(239, 68, 68, 0.42);
+  border-color: rgba(239, 68, 68, 0.36);
 }
 
 .fc-live-status {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  font-weight: 700;
+  gap: 6px;
+  font-weight: 600;
   color: var(--text-normal);
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .fc-live-dot {
-  width: 9px;
-  height: 9px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: #10b981;
-  box-shadow: 0 0 10px #10b981;
-  animation: fc-pulse 1.6s ease-in-out infinite;
+  box-shadow: 0 0 7px rgba(16, 185, 129, 0.75);
+  animation: fc-pulse 1.8s ease-in-out infinite;
   flex-shrink: 0;
 }
 
 .fc-live-dot-paused {
   background: #f59e0b;
-  box-shadow: 0 0 6px rgba(245, 158, 11, 0.6);
+  box-shadow: none;
   animation: none;
 }
 
 .fc-live-dot-offline {
   background: #ef4444;
-  box-shadow: 0 0 8px rgba(239, 68, 68, 0.7);
+  box-shadow: none;
+  animation: none;
 }
 
 .fc-live-peers {
-  display: flex;
+  display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
+  max-width: 100%;
 }
 
 .fc-live-peer-group {
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
-  border: 1px solid rgba(56, 189, 248, 0.45);
-  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  max-width: 100%;
   overflow: hidden;
-  transition: transform 0.14s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.14s ease;
-}
-
-.fc-live-peer-group:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.28);
 }
 
 .fc-live-peer-chip {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 3px 9px;
-  font-size: 11px;
+  gap: 4px;
+  padding: 2px 7px;
+  font-size: 10.5px;
   font-weight: 600;
   border: none;
   background: transparent;
   color: var(--text-normal);
   cursor: pointer;
+  max-width: 210px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .fc-live-peer-profile-link {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  padding: 3px 7px;
-  font-size: 10.5px;
+  gap: 2px;
+  padding: 2px 6px;
+  font-size: 10px;
   font-weight: 700;
   border: none;
-  border-left: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.06);
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+  background: transparent;
   color: #38bdf8;
   cursor: pointer;
   text-decoration: none;
 }
 
 .fc-live-peer-profile-link:hover {
-  background: rgba(56, 189, 248, 0.22);
+  background: rgba(56, 189, 248, 0.16);
   color: #ffffff;
 }
 
 .fc-live-peer-dot {
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   flex-shrink: 0;
 }
 
 .fc-live-actions {
-  display: flex;
+  display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
 }
 
 .fc-live-mini-btn {
-  padding: 3px 9px;
-  border-radius: 7px;
-  font-size: 11px;
+  height: 23px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 10.5px;
   font-weight: 600;
   cursor: pointer;
-  border: 1px solid var(--background-modifier-border);
-  background: var(--background-secondary);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
   color: var(--text-normal);
   transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease;
 }
 
 .fc-live-mini-btn:hover {
-  border-color: #ef4444;
-  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.09);
 }
 
 .fc-live-mini-btn-cta {
-  background: linear-gradient(135deg, #ef4444, #dc2626);
-  color: #ffffff;
-  border-color: rgba(239, 68, 68, 0.6);
-  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+  background: rgba(16, 185, 129, 0.18);
+  color: #6ee7b7;
+  border-color: rgba(16, 185, 129, 0.45);
 }
 
 /* ── Floating Collaborator Cursor Radar Strip inside Editor ──────────── */
@@ -1999,9 +2008,6 @@ body .fc-deck-card-live.fc-deck-card-live.is-collapsed .fc-radar-body {
 body .fc-live-banner.fc-live-banner.fc-live-banner-collapsed .fc-live-peers {
   display: none;
 }
-.fc-live-banner.fc-live-banner-collapsed {
-  padding-block: 4px;
-}
 .fc-deck-row-title-wrap {
   display: flex;
   align-items: center;
@@ -2826,58 +2832,54 @@ body .fc-deck-badge-warn.fc-deck-badge-warn {
   color: inherit;
 }
 
-/* Tiny Sleek Floating Corner Icon for Top Editor Live Edit */
-.fc-live-banner {
-  position: relative;
-  z-index: 15;
-}
+/* Tiny Sleek Floating Corner Pill for Top Editor Live Edit */
 .fc-live-icon-trigger {
   display: none;
   align-items: center;
-  gap: 6px;
-  height: 28px;
-  padding: 0 10px;
+  gap: 5px;
+  height: 26px;
+  padding: 0 9px;
   border-radius: 999px;
-  border: 1px solid rgba(52, 211, 153, 0.45);
-  background: rgba(16, 24, 32, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  background: rgba(10, 13, 18, 0.88);
   backdrop-filter: blur(8px);
   color: var(--text-normal);
-  font-size: 11.5px;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 600;
   cursor: pointer;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.32);
-  transition: transform 140ms ease, border-color 140ms ease, background-color 140ms ease;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.34);
+  transition: border-color 140ms ease, background-color 140ms ease;
 }
 .fc-live-icon-trigger:hover {
-  transform: translateY(-1px);
-  border-color: rgba(52, 211, 153, 0.8);
-  background: rgba(16, 30, 38, 0.96);
+  border-color: rgba(52, 211, 153, 0.55);
+  background: rgba(14, 20, 28, 0.96);
 }
 .fc-live-banner-paused .fc-live-icon-trigger {
-  border-color: rgba(245, 158, 11, 0.52);
+  border-color: rgba(245, 158, 11, 0.42);
 }
 .fc-live-banner-unpaired .fc-live-icon-trigger {
-  border-color: rgba(148, 163, 184, 0.45);
+  border-color: rgba(148, 163, 184, 0.36);
 }
 .fc-live-icon-peers {
-  padding: 1px 6px;
+  padding: 1px 5px;
   border-radius: 999px;
-  background: rgba(56, 189, 248, 0.22);
+  background: rgba(56, 189, 248, 0.18);
   color: #7dd3fc;
-  font-size: 10.5px;
-  font-weight: 800;
+  font-size: 10px;
+  font-weight: 700;
 }
 body .fc-live-banner.fc-live-banner.fc-live-banner-collapsed {
-  position: sticky;
-  top: 6px;
-  align-self: flex-end;
-  margin: 6px 10px -34px auto;
-  width: fit-content;
-  max-width: max-content;
+  position: absolute;
+  top: 8px;
+  right: 14px;
+  margin: 0;
+  width: max-content;
+  max-width: calc(100% - 24px);
   padding: 0;
   border: 0;
   background: transparent;
   box-shadow: none;
+  backdrop-filter: none;
   gap: 0;
   z-index: 25;
 }
@@ -4502,15 +4504,18 @@ body.is-mobile .fc-online-peer-row:hover {
   transform: none;
 }
 
-body.is-mobile .fc-live-banner {
-  flex-wrap: wrap;
+body.is-mobile .fc-live-banner:not(.fc-live-banner-collapsed) {
+  position: relative;
+  top: auto;
+  right: auto;
+  width: 100%;
   max-width: 100%;
-  overflow-x: hidden;
-  gap: 6px;
+  margin: 0 0 8px;
+  gap: 5px;
 }
 
 body.is-mobile .fc-live-peer-chip {
-  max-width: 100%;
+  max-width: 160px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -4579,7 +4584,6 @@ body.is-mobile .modal .fc-structure-modal {
   overflow: hidden;
 }
 
-.fc-live-banner,
 .fc-editor-cursor-radar {
   max-width: 100%;
   overflow-x: hidden;
@@ -7492,8 +7496,8 @@ body .fc-presence-show-all-btn.fc-presence-show-all-btn {
   position: absolute;
   top: calc(100% + 9px);
   right: -6px;
-  min-width: 210px;
-  max-width: 270px;
+  min-width: 196px;
+  max-width: min(260px, calc(100vw - 28px));
   display: grid;
   gap: 4px;
   padding: 9px 11px;

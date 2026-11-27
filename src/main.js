@@ -9,7 +9,7 @@ const { MarkdownView, Menu, Modal, Notice, Platform, Plugin, TFile, TFolder, req
 /*__FC_PLUGIN_UPDATE__*/
 /*__FC_MARKDOWN_MEDIA__*/
 /*__FC_MARKDOWN_DIFF__*/
-const PLUGIN_VERSION = "1.12.0";
+const PLUGIN_VERSION = "1.13.0";
 const SHARED_FOLDER = "FlightClub Shared/";
 const SYNC_ARCHIVE_PREFIX = "FlightClub Sync Archive";
 const DEFAULT_HUB_CITIES = ["Київ", "Житомир", "Луцьк", "Львів"];
@@ -2421,17 +2421,170 @@ function diffToChange(prev, next) {
   return { from: start, to: endPrev, insert: next.slice(start, endNext) };
 }
 
+function applyBaseHunks(source, hunks) {
+  if (!hunks.length) return source;
+  let out = "";
+  let cursor = 0;
+  for (const h of hunks) {
+    if (h.from < cursor || h.to < h.from || h.to > source.length) {
+      throw new RangeError("Invalid base hunk coordinates");
+    }
+    out += source.slice(cursor, h.from) + h.insert;
+    cursor = h.to;
+  }
+  return out + source.slice(cursor);
+}
+
+function diffToHunks(prev, next) {
+  if (prev === next) return [];
+  const single = diffToChange(prev, next);
+  if (!single) return [];
+  const prevSpan = prev.slice(single.from, single.to);
+  if (!prevSpan.includes("\n") && !single.insert.includes("\n")) return [single];
+
+  const pLines = prev.split("\n");
+  const nLines = next.split("\n");
+  let prefix = 0;
+  const maxPrefix = Math.min(pLines.length, nLines.length);
+  while (prefix < maxPrefix && pLines[prefix] === nLines[prefix]) prefix++;
+
+  let pEnd = pLines.length;
+  let nEnd = nLines.length;
+  while (pEnd > prefix && nEnd > prefix && pLines[pEnd - 1] === nLines[nEnd - 1]) {
+    pEnd--;
+    nEnd--;
+  }
+
+  const m = pEnd - prefix;
+  const n = nEnd - prefix;
+  if (m <= 0 || n <= 0 || m * n > 360_000) return [single];
+
+  const pOff = new Int32Array(pLines.length);
+  for (let i = 1; i < pLines.length; i++) pOff[i] = pOff[i - 1] + pLines[i - 1].length + 1;
+  const nOff = new Int32Array(nLines.length);
+  for (let j = 1; j < nLines.length; j++) nOff[j] = nOff[j - 1] + nLines[j - 1].length + 1;
+
+  const cols = n + 1;
+  const dp = new Uint32Array((m + 1) * cols);
+  for (let i = m - 1; i >= 0; i--) {
+    const pLine = pLines[prefix + i];
+    const row = i * cols;
+    const nextRow = (i + 1) * cols;
+    for (let j = n - 1; j >= 0; j--) {
+      dp[row + j] = pLine === nLines[prefix + j]
+        ? dp[nextRow + j + 1] + 1
+        : Math.max(dp[nextRow + j], dp[row + j + 1]);
+    }
+  }
+
+  const anchors = [];
+  for (let k = 0; k < prefix; k++) anchors.push([k, k]);
+  let ci = 0, cj = 0;
+  while (ci < m && cj < n) {
+    if (pLines[prefix + ci] === nLines[prefix + cj]) {
+      anchors.push([prefix + ci, prefix + cj]);
+      ci++;
+      cj++;
+    } else if (dp[(ci + 1) * cols + cj] >= dp[ci * cols + cj + 1]) {
+      ci++;
+    } else {
+      cj++;
+    }
+  }
+  const suffixCount = pLines.length - pEnd;
+  for (let k = 0; k < suffixCount; k++) anchors.push([pEnd + k, nEnd + k]);
+
+  const rawHunks = [];
+  let pCur = 0, nCur = 0;
+  for (const [pi, ni] of anchors) {
+    const pStart = pOff[pi], nStart = nOff[ni];
+    if (pStart > pCur || nStart > nCur) {
+      const sub = diffToChange(prev.slice(pCur, pStart), next.slice(nCur, nStart));
+      if (sub) rawHunks.push({ from: pCur + sub.from, to: pCur + sub.to, insert: sub.insert });
+    }
+    pCur = pStart + pLines[pi].length;
+    nCur = nStart + nLines[ni].length;
+  }
+  if (pCur < prev.length || nCur < next.length) {
+    const sub = diffToChange(prev.slice(pCur), next.slice(nCur));
+    if (sub) rawHunks.push({ from: pCur + sub.from, to: pCur + sub.to, insert: sub.insert });
+  }
+
+  const merged = [];
+  for (const h of rawHunks) {
+    const last = merged[merged.length - 1];
+    if (last && last.to >= h.from) {
+      const gap = prev.slice(last.to, h.from);
+      last.to = Math.max(last.to, h.to);
+      last.insert = last.insert + gap + h.insert;
+    } else {
+      merged.push({ ...h });
+    }
+  }
+  try {
+    if (merged.length > 0 && applyBaseHunks(prev, merged) === next) return merged;
+  } catch {}
+  return [single];
+}
+
+function hunksToSequentialChanges(hunks) {
+  const out = [];
+  let delta = 0;
+  for (const h of hunks) {
+    out.push({ from: h.from + delta, to: h.to + delta, insert: h.insert });
+    delta += h.insert.length - (h.to - h.from);
+  }
+  return out;
+}
+
+function transformOffsetThroughHunks(pos, hunks, assoc = 1) {
+  let delta = 0;
+  for (const h of hunks) {
+    if (pos < h.from) return pos + delta;
+    if (pos <= h.to) return h.from + delta + (assoc < 0 ? 0 : h.insert.length);
+    delta += h.insert.length - (h.to - h.from);
+  }
+  return pos + delta;
+}
+
 function mergeMarkdownText(base, local, remote) {
   if (local === base || local === remote) return remote;
   if (remote === base) return local;
-  const own = diffToChange(base, local), incoming = diffToChange(base, remote);
-  const apply = (body, change) => body.slice(0, change.from) + change.insert + body.slice(change.to);
-  if (own.from === own.to && own.from === incoming.from && incoming.from === incoming.to) {
-    return apply(base, { ...own, insert: [own.insert, incoming.insert].sort().join("") });
+  const ownHunks = diffToHunks(base, local);
+  const incomingHunks = diffToHunks(base, remote);
+  if (!ownHunks.length) return remote;
+  if (!incomingHunks.length) return local;
+  const combined = [];
+  let i = 0, j = 0;
+  while (i < ownHunks.length && j < incomingHunks.length) {
+    const a = ownHunks[i], b = incomingHunks[j];
+    if (a.from === b.from && a.to === b.to && a.insert === b.insert) {
+      combined.push(a);
+      i++;
+      j++;
+      continue;
+    }
+    if (a.from === a.to && b.from === b.to && a.from === b.from) {
+      combined.push({ from: a.from, to: a.to, insert: [a.insert, b.insert].sort().join("") });
+      i++;
+      j++;
+      continue;
+    }
+    if (a.to < b.from || (a.to === b.from && (a.from < a.to || b.from < b.to))) {
+      combined.push(a);
+      i++;
+      continue;
+    }
+    if (b.to < a.from || (b.to === a.from && (b.from < b.to || a.from < a.to))) {
+      combined.push(b);
+      j++;
+      continue;
+    }
+    return null;
   }
-  if (own.to <= incoming.from) return apply(apply(base, incoming), own);
-  if (incoming.to <= own.from) return apply(apply(base, own), incoming);
-  return null;
+  while (i < ownHunks.length) combined.push(ownHunks[i++]);
+  while (j < incomingHunks.length) combined.push(incomingHunks[j++]);
+  try { return applyBaseHunks(base, combined); } catch { return null; }
 }
 
 async function contentHash(text) {
@@ -2837,7 +2990,16 @@ module.exports = class FlightClubMarkdown extends Plugin {
       adapter:this.app.vault.adapter,
       directory:(this.app.vault.configDir||'.obsidian')+'/plugins/flightclub-markdown',
       requestUrl,getVersion:()=>PLUGIN_VERSION,getAppVersion:()=>obsidian.apiVersion,isActive:()=>this.alive,
-      onState:()=>{if(this.alive&&this.livePeers)this.refreshDockViews();},
+      onState:()=>{
+        if(!this.alive||!this.livePeers)return;
+        if(!this.updater?.blocked()&&!this.liveSession&&this.accountVerified&&this.vaultConfig?.deviceToken){
+          this.attachLiveSessionToActiveNote(this.activeNote());
+        }else{
+          this.renderLiveBanner();
+        }
+        this.updateStatusBar();
+        this.refreshDockViews();
+      },
     });
     this.writes = Promise.resolve();
     this.treeSyncState = data?.treeSyncState ?? null;
@@ -3182,7 +3344,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
     this.addCommand({ id: "sync-vault-folder", name: "Синхронізувати спільну папку FlightClub Sync", callback: () => void this.previewTreeSync() });
     this.addCommand({
       id: "drive-sync-now",
-      name: "🔄 Синхронізувати Google Drive зараз (Драйв головний)",
+      name: "🔄 Синхронізувати Google Drive зараз",
       hotkeys: [{ modifiers: ["Alt", "Shift"], key: "G" }],
       callback: () => void this.startVaultDownload(message => new Notice(message)),
     });
@@ -4850,7 +5012,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
     if (session && this.liveConnected) return {state:session.batch ? "sending":"live",eligible:true,
       label:session.batch ? "Надсилаємо зміни":`${scopeLabel} активний`,
       hint: target.kind === "drive"
-        ? "Зміни файла Google Drive і живі курсори синхронізуються в реальному часі (Драйв головний)."
+        ? "Зміни файла Google Drive і живі курсори синхронізуються в реальному часі."
         : "Зміни цієї сторінки /m/ надсилаються автоматично. Учасники й курсори показуються нижче."};
     return {state:session?.retryDelay ? "retrying":"connecting",eligible:true,
       label:session?.retryDelay ? "Відновлюємо з’єднання":`Підключаємо ${scopeLabel}`,
@@ -5099,6 +5261,37 @@ module.exports = class FlightClubMarkdown extends Plugin {
     return { editor, raw, ...splitFrontmatter(raw), isCanvas: false };
   }
 
+  applyEditorHunksPreservingCursor(editor, sourceText, targetText, offsetPrefix = 0) {
+    const hunks = diffToHunks(sourceText, targetText);
+    if (!hunks.length) return true;
+    const scroll = typeof editor.getScrollInfo === "function" ? editor.getScrollInfo() : null;
+    const hasCursorApi = typeof editor.getCursor === "function" && typeof editor.posToOffset === "function" && typeof editor.setSelection === "function";
+    const anchorOff = hasCursorApi ? Math.max(0, editor.posToOffset(editor.getCursor("anchor")) - offsetPrefix) : null;
+    const headOff = hasCursorApi ? Math.max(0, editor.posToOffset(editor.getCursor("head")) - offsetPrefix) : null;
+    this.liveApplyingRemote = true;
+    try {
+      for (let i = hunks.length - 1; i >= 0; i--) {
+        const h = hunks[i];
+        editor.replaceRange(
+          h.insert,
+          editor.offsetToPos(offsetPrefix + h.from),
+          editor.offsetToPos(offsetPrefix + h.to),
+        );
+      }
+      if (hasCursorApi && anchorOff !== null && headOff !== null) {
+        const nextAnchor = offsetPrefix + clampOffset(transformOffsetThroughHunks(anchorOff, hunks, -1), targetText.length);
+        const nextHead = offsetPrefix + clampOffset(transformOffsetThroughHunks(headOff, hunks, 1), targetText.length);
+        editor.setSelection(editor.offsetToPos(nextAnchor), editor.offsetToPos(nextHead));
+      }
+      if (scroll && typeof editor.scrollTo === "function" && (Number.isFinite(scroll.left) || Number.isFinite(scroll.top))) {
+        editor.scrollTo(scroll.left ?? null, scroll.top ?? null);
+      }
+      return true;
+    } finally {
+      this.liveApplyingRemote = false;
+    }
+  }
+
   async applyNoteContent(file, local, content, stillCurrent = () => true) {
     if (!stillCurrent()) return false;
     if (local.body === content) return true;
@@ -5109,13 +5302,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
     if (local.editor) {
       const view = this.noteView(file);
       if (view?.editor !== local.editor || view.getMode?.() === "preview" || local.editor.getValue() !== local.raw) return false;
-      const change = diffToChange(local.body, content);
-      const offset = local.frontmatterBlock.length;
-      this.liveApplyingRemote = true;
-      try {
-        local.editor.replaceRange(change.insert, local.editor.offsetToPos(offset + change.from), local.editor.offsetToPos(offset + change.to));
-        return true;
-      } finally { this.liveApplyingRemote = false; }
+      return this.applyEditorHunksPreservingCursor(local.editor, local.body, content, local.frontmatterBlock.length);
     }
     let applied = false;
     if (typeof this.app.vault.process !== "function") return false;
@@ -5170,13 +5357,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
     if (local.editor) {
       const view = this.noteView(file);
       if (view?.editor !== local.editor || view.getMode?.() === "preview" || local.editor.getValue() !== local.raw) return false;
-      const change = diffToChange(local.raw, targetNorm);
-      if (!change) return true;
-      this.liveApplyingRemote = true;
-      try {
-        local.editor.replaceRange(change.insert, local.editor.offsetToPos(change.from), local.editor.offsetToPos(change.to));
-        return true;
-      } finally { this.liveApplyingRemote = false; }
+      return this.applyEditorHunksPreservingCursor(local.editor, local.raw, targetNorm, 0);
     }
     let applied = false;
     if (typeof this.app.vault.process === "function") {
@@ -5272,10 +5453,28 @@ module.exports = class FlightClubMarkdown extends Plugin {
             linked?.bindingRevision === this.vaultConfig.revision) ? linked : null;
           const localHash = await contentHash(localNorm);
           const rawHash = localRaw === localNorm ? localHash : await contentHash(localRaw);
+          const localBodyNorm = !isCanvas ? splitFrontmatter(localNorm).body : localNorm;
+          const remoteBodyNorm = !isCanvas ? splitFrontmatter(remoteText).body : remoteText;
+          const localBodyHash = !isCanvas && localBodyNorm !== localNorm ? await contentHash(localBodyNorm) : null;
+          const remoteBodyHash = !isCanvas && remoteBodyNorm !== remoteText ? await contentHash(remoteBodyNorm) : null;
           const diskHash = isCanvas && typeof local.diskRaw === "string" &&
             FC_DRIVE_SYNC.canvasTextEquals(localNorm, local.diskRaw) ? await contentHash(local.diskRaw) : null;
           const remoteHash = page.sha256 || await contentHash(remoteText);
-          if (baseline && (baseline.sha256 === remoteHash || baseline.remoteSha256 === remoteHash)) {
+          const remoteMatchesBaseline = Boolean(
+            baseline && (
+              baseline.sha256 === remoteHash || baseline.remoteSha256 === remoteHash ||
+              (remoteBodyHash && (baseline.sha256 === remoteBodyHash || baseline.remoteSha256 === remoteBodyHash))
+            ),
+          );
+          const matchesBaseline = Boolean(
+            baseline && (
+              baseline.sha256 === localHash || baseline.remoteSha256 === localHash ||
+              baseline.sha256 === rawHash || baseline.remoteSha256 === rawHash ||
+              (localBodyHash && (baseline.sha256 === localBodyHash || baseline.remoteSha256 === localBodyHash)) ||
+              (diskHash && (baseline.sha256 === diskHash || baseline.remoteSha256 === diskHash))
+            ),
+          );
+          if (remoteMatchesBaseline && !matchesBaseline) {
             // Remote matches our last synced baseline while local has newer edits: adopt remote as base and push local forward (NEVER rollback!).
             session.base = remoteText;
             session.liveRev = page.rev ?? session.liveRev;
@@ -5285,16 +5484,8 @@ module.exports = class FlightClubMarkdown extends Plugin {
             session.pendingCanvasPage = null;
             return;
           }
-          const matchesBaseline = Boolean(
-            baseline && (
-              baseline.sha256 === localHash || baseline.remoteSha256 === localHash ||
-              baseline.sha256 === rawHash || baseline.remoteSha256 === rawHash ||
-              (diskHash && (baseline.sha256 === diskHash || baseline.remoteSha256 === diskHash))
-            ),
-          );
           const dirty = !isCanvas && this.isEditorDirty(session.file);
-          const untouchedLocal = !dirty && !this.lastEditorInputAt?.get?.(session.file.path);
-          if (isCanvas ? matchesBaseline : !dirty && (matchesBaseline || !baseline || untouchedLocal)) {
+          if (isCanvas ? matchesBaseline : !dirty && (matchesBaseline || (!baseline && !localNorm.trim()))) {
             base = localNorm;
           }
         }
@@ -5427,9 +5618,11 @@ module.exports = class FlightClubMarkdown extends Plugin {
             };
           }
         } else {
-          const change = diffToChange(session.base, localComparable);
-          if (change && localComparable.length <= MAX_NOTE) {
-            session.batch = { opId: crypto.randomUUID(), baseRev: session.liveRev, revision: session.revision, content: localComparable, change };
+          const hunks = diffToHunks(session.base, localComparable);
+          if (hunks.length && localComparable.length <= MAX_NOTE) {
+            const change = diffToChange(session.base, localComparable);
+            const seqChanges = hunks.length <= 32 ? hunksToSequentialChanges(hunks) : [change];
+            session.batch = { opId: crypto.randomUUID(), baseRev: session.liveRev, revision: session.revision, content: localComparable, change, changes: seqChanges };
           }
         }
       }
@@ -5459,7 +5652,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
             baseContent: batch.baseContent, canvasContent: batch.content,
           } : {
             ...basePayload, action: "drive_live_op", fileId: session.fileId, opId: batch.opId,
-            baseRev: batch.baseRev, changes: [batch.change],
+            baseRev: batch.baseRev, changes: batch.changes || [batch.change],
           }) : {
             ...basePayload, action: "drive_live_presence", fileId: session.fileId,
             afterRev: session.liveRev ?? undefined, afterVersion: session.revision ?? undefined, afterSha256: session.sha256 ?? undefined,
@@ -6653,26 +6846,19 @@ module.exports = class FlightClubMarkdown extends Plugin {
     dot.className = "fc-live-dot" + (paused ? " fc-live-dot-paused" : unpaired ? " fc-live-dot-offline" : "");
     dot.setAttribute("aria-hidden", "true");
     status.append(dot);
+    const shortMode = paused ? "Пауза Live" : unpaired ? "Офлайн" : (mode?.state === "sending" ? "Сінк…" : "Live");
     if (link) {
-      status.append(doc.createTextNode(`${mode.label} · /m/${link.slug}`));
+      status.append(doc.createTextNode(`${shortMode} · /m/${link.slug}`));
     } else if (driveId) {
-      status.append(doc.createTextNode(`${mode.label} · ${file.basename}`));
+      status.append(doc.createTextNode(`${shortMode} · ${file.basename}`));
     } else {
-      status.append(doc.createTextNode(`Опублікований вольт · ${sharedPath}`));
+      status.append(doc.createTextNode(`Вольт · ${sharedPath}`));
     }
     banner.append(status);
-    const peersWrap = doc.createElement("div");
-    peersWrap.className = "fc-live-peers";
-    if (!peers.length) {
-      const solo = doc.createElement("span");
-      solo.className = "fc-live-solo-note";
-      solo.textContent = "👥 Зараз у документі лише ви";
-      peersWrap.append(solo);
-    } else {
-      const label = doc.createElement("span");
-      label.className = "fc-live-solo-note";
-      label.textContent = `👥 У документі (${peers.length + 1}):`;
-      peersWrap.append(label);
+
+    if (peers.length > 0) {
+      const peersWrap = doc.createElement("div");
+      peersWrap.className = "fc-live-peers";
       for (const peer of peers) {
         const group = doc.createElement("div");
         group.className = "fc-live-peer-group";
@@ -6694,7 +6880,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
           obadge.textContent = "OPSEC";
           chip.append(obadge);
         }
-        const peerLabel = peer.opsec && !prof ? "" : `${peer.name}${sameAccount ? " (ваш пристрій)" : ""}`;
+        const peerLabel = peer.opsec && !prof ? "" : `${peer.name}${sameAccount ? " (ви)" : ""}`;
         chip.append(doc.createTextNode(`${peerLabel ? peerLabel + " · " : ""}${verb}${where}`));
         if (target) chip.addEventListener("click", () => this.jumpToPeerCursor(peer));
         group.append(chip);
@@ -6710,8 +6896,8 @@ module.exports = class FlightClubMarkdown extends Plugin {
         }
         peersWrap.append(group);
       }
+      banner.append(peersWrap);
     }
-    banner.append(peersWrap);
 
     const actions = doc.createElement("div");
     actions.className = "fc-live-actions";
@@ -6719,7 +6905,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
       const toggle = doc.createElement("button");
       toggle.type = "button";
       toggle.className = "fc-live-mini-btn" + (!this.vaultConfig.liveEnabled ? " fc-live-mini-btn-cta" : "");
-      toggle.textContent = this.vaultConfig.liveEnabled ? "⏸ Пауза Live" : "🟢 Увімкнути Live Edit";
+      toggle.textContent = this.vaultConfig.liveEnabled ? "Пауза" : "Увімкнути Live Edit";
       toggle.disabled = Boolean(this.liveModeChanging);
       toggle.addEventListener("click", () => void this.toggleLiveMode());
       actions.append(toggle);
@@ -6749,7 +6935,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
       const openDocs = doc.createElement("button");
       openDocs.type = "button";
       openDocs.className = "fc-live-mini-btn";
-      openDocs.textContent = "Docs ↗";
+      openDocs.textContent = "Сайт ↗";
       openDocs.title = bannerDocsTarget.url;
       openDocs.addEventListener("click", () => this.openSite(bannerDocsTarget.url));
       actions.append(openDocs);
@@ -6757,7 +6943,8 @@ module.exports = class FlightClubMarkdown extends Plugin {
     const openPanel = doc.createElement("button");
     openPanel.type = "button";
     openPanel.className = "fc-live-mini-btn";
-    openPanel.textContent = "Панель FlightClub";
+    openPanel.textContent = "Панель";
+    openPanel.title = "Відкрити бічну панель FlightClub";
     openPanel.addEventListener("click", () => void this.activateDockView(true));
     actions.append(openPanel);
 
@@ -6766,8 +6953,8 @@ module.exports = class FlightClubMarkdown extends Plugin {
     collapseBannerBtn.className = "fc-live-mini-btn fc-live-collapse-btn";
     collapseBannerBtn.setAttribute("data-fc-collapse", "live-banner");
     collapseBannerBtn.setAttribute("aria-expanded", String(!bannerCollapsed));
-    collapseBannerBtn.title = bannerCollapsed ? "Розгорнути панель Live Edit" : "Згорнути панель Live Edit";
-    collapseBannerBtn.textContent = bannerCollapsed ? "▸ Розгорнути" : "✕";
+    collapseBannerBtn.title = bannerCollapsed ? "Розгорнути Live Edit" : "Згорнути в пігулку";
+    collapseBannerBtn.textContent = bannerCollapsed ? "▸" : "✕";
     collapseBannerBtn.addEventListener("click", toggleCollapse);
     actions.append(collapseBannerBtn);
     banner.append(actions);
@@ -8138,8 +8325,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
             }
           } catch {}
         } else if (view?.editor && view.getMode?.() !== "preview" && view.editor.getValue() !== res.content) {
-          this.liveApplyingRemote = true;
-          try { view.editor.setValue(res.content); } finally { this.liveApplyingRemote = false; }
+          this.applyEditorHunksPreservingCursor(view.editor, view.editor.getValue(), res.content, 0);
         }
         if (this.liveSession?.file === file) {
           this.liveSession.base = res.content.replace(/\r\n?/g, "\n");
@@ -14885,7 +15071,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
         driveHead.createEl("h4", { cls: "fc-deck-title", text: "FlightClub Vault · Google Drive" });
         driveHead.createSpan({
           cls: "fc-deck-badge " + (this.vaultConfig.driveAutoSync !== false ? "fc-deck-badge-ok" : ""),
-          text: this.vaultConfig.driveAutoSync !== false ? "Драйв головний · Автосінк" : "Ручний режим",
+          text: this.vaultConfig.driveAutoSync !== false ? "Автосінк Drive" : "Ручний режим",
         });
         if (hasToken) driveCard.createEl("p", { cls: "fc-sync-note", text: [
           this.accountVerified ? this.vaultConfig.pairedRole : "Роль перевіряється",
@@ -15139,7 +15325,7 @@ module.exports = class FlightClubMarkdown extends Plugin {
         const notesCard = bodySlot.createDiv({ cls: "fc-deck-card fc-sync-card" });
         notesCard.createEl("h4", { cls: "fc-deck-title", text: "Параметри Google Drive" });
         for (const [key, title] of [
-          ["driveAutoSync","Автоматичний двосторонній сінк з Google Drive (Драйв головний)"],
+          ["driveAutoSync","Автоматичний двосторонній сінк з Google Drive"],
           ["refreshOnStartup","Синхронізувати при запуску Obsidian"],
           ["importPages","Імпортувати доступні сторінки бази знань /m/"],
           ["importPhotos","Завантажувати фото майна"],
